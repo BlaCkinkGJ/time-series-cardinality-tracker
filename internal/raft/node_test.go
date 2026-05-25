@@ -41,6 +41,8 @@ func TestSingleNodePropose(t *testing.T) {
 		t.Fatalf("ProposeAdd: %v", err)
 	}
 
+	time.Sleep(50 * time.Millisecond)
+
 	if est := eng.Estimate("ts-x"); est == 0 {
 		t.Fatal("expected non-zero estimate after propose")
 	}

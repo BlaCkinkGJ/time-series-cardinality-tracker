@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
@@ -98,7 +99,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", *httpPort), Handler: mux}
+	mainMux := http.NewServeMux()
+	mainMux.Handle("/metrics", promhttp.Handler())
+	mainMux.Handle("/", mux)
+
+	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", *httpPort), Handler: mainMux}
 	go func() {
 		slog.Info("HTTP gateway listening", "port", *httpPort)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
