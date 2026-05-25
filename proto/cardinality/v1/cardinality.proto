@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package cardinality.v1;
+option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;cardinalityv1";
+
+import "google/api/annotations.proto";
+
+service CardinalityService {
+  // Add inserts a value into the HLL for a given series.
+  rpc Add(AddRequest) returns (AddResponse) {
+    option (google.api.http) = {
+      post: "/v1/series/{series_id}/add"
+      body: "*"
+    };
+  }
+
+  // BatchAdd inserts multiple values in one call.
+  rpc BatchAdd(BatchAddRequest) returns (AddResponse) {
+    option (google.api.http) = {
+      post: "/v1/series/{series_id}/batch"
+      body: "*"
+    };
+  }
+
+  // Query returns the current cardinality estimate.
+  rpc Query(QueryRequest) returns (QueryResponse) {
+    option (google.api.http) = {
+      get: "/v1/series/{series_id}/cardinality"
+    };
+  }
+}
+
+message AddRequest {
+  string series_id = 1;
+  bytes  value     = 2;
+}
+
+message BatchAddRequest {
+  string         series_id = 1;
+  repeated bytes values    = 2;
+}
+
+message AddResponse {
+  bool ok = 1;
+}
+
+message QueryRequest {
+  string series_id = 1;
+  bool   stale_ok  = 2;
+}
+
+message QueryResponse {
+  string series_id   = 1;
+  uint64 cardinality = 2;
+}

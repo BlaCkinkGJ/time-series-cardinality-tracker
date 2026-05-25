@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package cardinality.v1;
+option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;cardinalityv1";
+
+message Command {
+  enum Type { ADD = 0; }
+  Type   type      = 1;
+  string series_id = 2;
+  bytes  value     = 3;
+}
