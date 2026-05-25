@@ -62,7 +62,7 @@ Each node exposes both a REST gateway (`grpc-gateway`) and a gRPC server:
 - If `owner != selfAddr`, it forwards the request over the cached gRPC connection to the owner. This makes sharding completely transparent to external clients.
 
 ### 2.3 Raft Durability Layer (`internal/raft`)
-Although nodes run independently from a sharding perspective, each node utilizes a single-node Raft group (`go.etcd.io/etcd/raft/v3`) for its own local sharded store:
+Although nodes run independently from a sharding perspective, each **shard** utilizes a Raft group (`go.etcd.io/etcd/raft/v3`) for its own local sharded store:
 - **WAL Durability**: Write proposals are processed sequentially through the Raft log.
 - **FSM Application**: Once committed by Raft, entries are applied to the in-memory HLL engine and written to BadgerDB.
 - **Log Compaction & Snapshots**: Every 10,000 log entries, the FSM state (serialised maps of HLL sketch registers) is dumped as a Raft snapshot. The memory storage is then compacted, discarding old log entries.
