@@ -79,13 +79,13 @@ func TestIntegration_AddQuery_WithRaft(t *testing.T) {
 
 	n := 50000
 	for i := 0; i < n; i++ {
-		_, err := client.Add(ctx, &pb.AddRequest{SeriesId: "prod-series", Value: []byte(fmt.Sprintf("u%d", i))})
+		_, err := client.Add(ctx, &pb.AddRequest{Group: "prod-group", Id: []byte(fmt.Sprintf("u%d", i))})
 		if err != nil {
 			t.Fatalf("Add %d: %v", i, err)
 		}
 	}
 
-	resp, err := client.Query(ctx, &pb.QueryRequest{SeriesId: "prod-series", StaleOk: true})
+	resp, err := client.Query(ctx, &pb.QueryRequest{Group: "prod-group", StaleOk: true})
 	if err != nil {
 		t.Fatal(err)
 	}

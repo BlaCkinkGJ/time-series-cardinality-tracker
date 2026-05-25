@@ -1,0 +1,88 @@
+# Copyright 2026 BlaCkinkGJ
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# NODE_ID derivation: uses shell arithmetic on HOSTNAME suffix (e.g. cardinality-0 → node-id 0).
+# Formula: NODE_ID = ${HOSTNAME##*-} — strips everything up to and including the last '-'.
+# No K8s 1.28+ downward-API pod-index label required.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cardinality
+  namespace: cardinality
+  labels:
+    app: cardinality
+spec:
+  serviceName: cardinality  # must match headless service name for stable DNS
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cardinality
+  template:
+    metadata:
+      labels:
+        app: cardinality
+    spec:
+      containers:
+        - name: server
+          image: cardinality-tracker:latest
+          imagePullPolicy: IfNotPresent
+          # Shell wrapper extracts the ordinal from HOSTNAME (e.g. cardinality-2 → node-id 2).
+          # Works on any K8s version; no special downward-API label needed.
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              exec /server
+              -grpc-port=9090
+              -http-port=8080
+              -data=/data
+              -node-id=$((${HOSTNAME##*-}+1))
+              -peers=cardinality-0.cardinality.cardinality.svc.cluster.local:9090,cardinality-1.cardinality.cardinality.svc.cluster.local:9090,cardinality-2.cardinality.cardinality.svc.cluster.local:9090
+          ports:
+            - name: grpc
+              containerPort: 9090
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

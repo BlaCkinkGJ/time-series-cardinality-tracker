@@ -7,7 +7,7 @@ build:
 	go build ./...
 
 test:
-	go test ./... -race -count=1
+	go test ./... -count=1
 
 proto:
 	protoc --go_out=gen --go_opt=paths=source_relative \

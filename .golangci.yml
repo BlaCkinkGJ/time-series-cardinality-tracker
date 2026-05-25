@@ -1,0 +1,46 @@
+run:
+  timeout: 5m
+  go: "1.21"
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unused
+    - gofmt
+    - revive
+    - misspell
+    - gosec
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+  disable:
+    - depguard
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # generated protobuf code has unexported fields
+
+issues:
+  # Exclude generated protobuf and gateway code from all linters
+  exclude-dirs:
+    - gen/
+  exclude-rules:
+    # Ignore SA1019 (deprecated grpc.Dial) — generated gateway code uses it
+    - linters: [staticcheck]
+      text: "SA1019"
+    # Ignore G115 (integer conversion) in generated code
+    - linters: [gosec]
+      text: "G115"
+    # Ignore errcheck on gs.Serve in test files (deliberate fire-and-forget)
+    - linters: [errcheck]
+      source: "go gs\\.Serve"
+    - linters: [errcheck]
+      path: "_test\\.go"
+      text: "gs\\.Serve"
