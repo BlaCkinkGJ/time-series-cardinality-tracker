@@ -30,6 +30,7 @@ type Server struct {
 	node     RaftNode
 	router   *router.Ring // nil in standalone mode
 	selfAddr string
+	dialOpts []grpc.DialOption
 
 	mu    sync.Mutex
 	conns map[string]*grpc.ClientConn
@@ -45,6 +46,13 @@ func New(engine *hll.Engine, st *store.BadgerStore, node RaftNode, ring *router.
 		selfAddr: selfAddr,
 		conns:    make(map[string]*grpc.ClientConn),
 	}
+}
+
+// SetDialOptions configures custom gRPC dial options for peer forwarding connections.
+func (s *Server) SetDialOptions(opts ...grpc.DialOption) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dialOpts = opts
 }
 
 func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, error) {
@@ -131,7 +139,8 @@ func (s *Server) getPeerClient(addr string) (pb.CardinalityServiceClient, error)
 	conn, ok := s.conns[addr]
 	if !ok {
 		var err error
-		conn, err = grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		opts := append([]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, s.dialOpts...)
+		conn, err = grpc.Dial(addr, opts...)
 		if err != nil {
 			return nil, err
 		}
