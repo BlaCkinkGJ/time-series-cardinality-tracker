@@ -8,6 +8,7 @@ require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0
 	github.com/spaolacci/murmur3 v1.1.0
+	go.etcd.io/etcd/raft/v3 v3.5.13
 	google.golang.org/genproto/googleapis/api v0.0.0-20240513163218-0867130af1f8
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.1
