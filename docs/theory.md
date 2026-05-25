@@ -49,7 +49,7 @@ To solve this, we map **150 virtual nodes** per physical node.
 3. Each virtual address is hashed to a uint32 point on the circle $[0, 2^{32}-1]$.
 
 When a write arrives:
-1. `series_id` is hashed to a uint32 point.
+1. `group` is hashed to a uint32 point.
 2. We traverse the ring clockwise to find the first virtual node hash that is $\ge$ the key's hash.
 3. The request is routed to the physical node matching that virtual node.
 

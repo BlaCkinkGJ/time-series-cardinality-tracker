@@ -6,7 +6,7 @@ This document defines the REST and gRPC API specifications for the Group Cardina
 
 ## 1. REST API (HTTP/JSON)
 
-The HTTP REST API is exposed by the HTTP gateway. All request values (`id` or `ids`) sent via JSON must be **Base64 encoded** byte slices.
+The HTTP REST API is exposed by the HTTP gateway. All request values (`id` or `ids`) sent via JSON are plain strings.
 
 ### 1.1 Add ID
 Adds a single unique item to a group HLL sketch.
@@ -20,7 +20,7 @@ Adds a single unique item to a group HLL sketch.
 - **Request Body**:
   ```json
   {
-    "id": "<base64_encoded_id>"
+    "id": "<id_string>"
   }
   ```
 - **Response Body**:
@@ -34,7 +34,7 @@ Adds a single unique item to a group HLL sketch.
 ```bash
 curl -X POST http://localhost:8081/v1/group/sensor-01/add \
   -H "Content-Type: application/json" \
-  -d '{"id": "dXNlci0xMjM="}'
+  -d '{"id": "user-123"}'
 ```
 
 ---
@@ -52,8 +52,8 @@ Adds multiple unique items to a group HLL sketch in a single request.
   ```json
   {
     "ids": [
-      "<base64_encoded_id_1>",
-      "<base64_encoded_id_2>"
+      "<id_string_1>",
+      "<id_string_2>"
     ]
   }
   ```
@@ -68,7 +68,7 @@ Adds multiple unique items to a group HLL sketch in a single request.
 ```bash
 curl -X POST http://localhost:8081/v1/group/sensor-01/batch \
   -H "Content-Type: application/json" \
-  -d '{"ids": ["dXNlci00NTY=", "dXNlci03ODk="]}'
+  -d '{"ids": ["user-456", "user-789"]}'
 ```
 
 ---
@@ -128,15 +128,15 @@ service CardinalityService {
 ```protobuf
 message AddRequest {
   string group = 1;
-  bytes  id    = 2;
+  string id    = 2;
 }
 ```
 
 #### `BatchAddRequest`
 ```protobuf
 message BatchAddRequest {
-  string         group = 1;
-  repeated bytes ids   = 2;
+  string          group = 1;
+  repeated string ids   = 2;
 }
 ```
 

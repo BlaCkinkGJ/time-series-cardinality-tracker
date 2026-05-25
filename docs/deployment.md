@@ -48,7 +48,7 @@ docker compose up -d
 # Add an ID to group "prod" via node1
 curl -X POST http://localhost:8081/v1/group/prod/add \
   -H "Content-Type: application/json" \
-  -d '{"id": "dXNlci0xMjM="}'
+  -d '{"id": "user-123"}'
 
 # Query cardinality from any node (forwarded automatically)
 curl http://localhost:8082/v1/group/prod/cardinality
@@ -119,7 +119,7 @@ export LB_IP=$(kubectl -n cardinality get svc cardinality-lb -o jsonpath='{.stat
 # Add an ID
 curl -X POST http://$LB_IP:8080/v1/group/prod/add \
   -H "Content-Type: application/json" \
-  -d '{"id": "dXNlci0xMjM="}'
+  -d '{"id": "user-123"}'
 
 # Query cardinality
 curl http://$LB_IP:8080/v1/group/prod/cardinality
