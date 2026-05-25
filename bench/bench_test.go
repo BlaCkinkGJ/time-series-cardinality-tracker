@@ -31,7 +31,7 @@ func BenchmarkHLL_Add(b *testing.B) {
 
 func BenchmarkHLL_Estimate(b *testing.B) {
 	h := hll.New()
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 100000; i++ {
 		h.Add([]byte(fmt.Sprintf("v%d", i)))
 	}
 	b.ResetTimer()

@@ -92,7 +92,7 @@ make bench
 
 #### Benchmark Settings & Scenarios
 - `BenchmarkHLL_Add`: Factual latency of updating a single local HLL++ sketch.
-- `BenchmarkHLL_Estimate`: Factual latency of estimating cardinality for a series with 10k unique items.
+- `BenchmarkHLL_Estimate`: Factual latency of estimating cardinality for a series with 100k unique items. (Triggers the raw HLL mathematical estimation and bias-correction pipeline, rather than the small-cardinality Linear Counting optimization).
 - `BenchmarkEngine_Add_Parallel`: Concurrent throughput test updating a shared, thread-safe local engine map.
 - `BenchmarkHLL_Marshal`: Factual latency of encoding the HLL register state.
 - `BenchmarkDistributed_Add_Forward`: Local simulation of a 3-node sharded cluster. Measures the overhead of consistent-hash lookup and gRPC request sharding/forwarding to peer nodes.
@@ -103,12 +103,12 @@ Actual benchmark results on Apple Silicon (M-series / arm64):
 goos: darwin
 goarch: arm64
 pkg: github.com/yourorg/cardinality-tracker/bench
-BenchmarkHLL_Add-10                            	183289123	         6.445 ns/op	       0 B/op	       0 allocs/op
-BenchmarkHLL_Estimate-10                       	   12076	    102676 ns/op	       0 B/op	       0 allocs/op
-BenchmarkEngine_Add_Parallel-10                	 9529302	       125.0 ns/op	      39 B/op	       2 allocs/op
-BenchmarkHLL_Marshal-10                        	 2885038	       428.2 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDistributed_Add_Forward-10            	   42732	     52700 ns/op	  235139 B/op	     366 allocs/op
-BenchmarkDistributed_Add_Forward_Latency5ms-10 	    2698	    407164 ns/op	   53838 B/op	     368 allocs/op
+BenchmarkHLL_Add-10                            	182303275	         6.563 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHLL_Estimate-10                       	    5050	    227646 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEngine_Add_Parallel-10                	 9043989	       125.1 ns/op	      39 B/op	       2 allocs/op
+BenchmarkHLL_Marshal-10                        	 2831702	       493.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDistributed_Add_Forward-10            	   40783	     72420 ns/op	  248184 B/op	     366 allocs/op
+BenchmarkDistributed_Add_Forward_Latency5ms-10 	    2776	    413626 ns/op	   53805 B/op	     367 allocs/op
 ```
 
 ## License
