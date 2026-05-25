@@ -22,8 +22,8 @@ import (
 	"github.com/yourorg/cardinality-tracker/internal/hll"
 )
 
-// ErrNotFound is returned by Load when the series does not exist.
-var ErrNotFound = errors.New("store: series not found")
+// ErrNotFound is returned by Load when the group does not exist.
+var ErrNotFound = errors.New("store: group not found")
 
 // BadgerStore persists HLL state to BadgerDB.
 type BadgerStore struct {
@@ -45,26 +45,26 @@ func Open(dir string) (*BadgerStore, error) {
 // Close shuts down BadgerDB gracefully.
 func (s *BadgerStore) Close() error { return s.db.Close() }
 
-func key(seriesID string) []byte {
-	return []byte("hll/" + seriesID)
+func key(group string) []byte {
+	return []byte("hll/" + group)
 }
 
 // Save serialises h and writes it to BadgerDB.
-func (s *BadgerStore) Save(seriesID string, h *hll.HLL) error {
+func (s *BadgerStore) Save(group string, h *hll.HLL) error {
 	b, err := h.Marshal()
 	if err != nil {
 		return fmt.Errorf("store.Save marshal: %w", err)
 	}
 	return s.db.Update(func(txn *badger.Txn) error {
-		return txn.Set(key(seriesID), b)
+		return txn.Set(key(group), b)
 	})
 }
 
-// Load reads and deserialises the HLL for seriesID.
-func (s *BadgerStore) Load(seriesID string) (*hll.HLL, error) {
+// Load reads and deserialises the HLL for group.
+func (s *BadgerStore) Load(group string) (*hll.HLL, error) {
 	var h *hll.HLL
 	err := s.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(key(seriesID))
+		item, err := txn.Get(key(group))
 		if errors.Is(err, badger.ErrKeyNotFound) {
 			return ErrNotFound
 		}

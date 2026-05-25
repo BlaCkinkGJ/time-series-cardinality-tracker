@@ -5,7 +5,7 @@ option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;c
 
 message Command {
   enum Type { ADD = 0; }
-  Type   type      = 1;
-  string series_id = 2;
-  bytes  value     = 3;
+  Type   type  = 1;
+  string group = 2;
+  bytes  id    = 3;
 }

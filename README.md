@@ -36,7 +36,7 @@ For detailed design decisions, see [docs/architecture.md](docs/architecture.md) 
    +-----------+       +-----------+       +-----------+
 ```
 
-1. **Shard Routing**: Each `series_id` is assigned to a node using a consistent hash ring (150 virtual nodes per node).
+1. **Shard Routing**: Each `group` is assigned to a node using a consistent hash ring (150 virtual nodes per node).
 2. **Request Forwarding**: Nodes forward requests to the responsible peer over gRPC if they do not own the key.
 3. **Local Durability**: Each node runs a single-node Raft group to manage local writes, snapshots, and disk persistence.
 
@@ -58,21 +58,21 @@ Ports:
 ### API Usage
 For the complete API request/response definitions and gRPC payloads, refer to [docs/api-spec.md](docs/api-spec.md).
 
-#### Add Value
+#### Add ID
 ```bash
-curl -X POST http://localhost:8081/v1/series/prod-metrics/add \
-  -d '{"value": "dXNlci0xMjM="}'
+curl -X POST http://localhost:8081/v1/group/prod-metrics/add \
+  -d '{"id": "dXNlci0xMjM="}'
 ```
 
-#### Batch Add Values
+#### Batch Add IDs
 ```bash
-curl -X POST http://localhost:8081/v1/series/prod-metrics/batch \
-  -d '{"values": ["dXNlci00NTY=", "dXNlci03ODk="]}'
+curl -X POST http://localhost:8081/v1/group/prod-metrics/batch \
+  -d '{"ids": ["dXNlci00NTY=", "dXNlci03ODk="]}'
 ```
 
 #### Query Cardinality
 ```bash
-curl http://localhost:8082/v1/series/prod-metrics/cardinality
+curl http://localhost:8082/v1/group/prod-metrics/cardinality
 ```
 
 ---

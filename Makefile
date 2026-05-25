@@ -13,7 +13,7 @@ proto:
 	protoc --go_out=gen --go_opt=paths=source_relative \
 	  --go-grpc_out=gen --go-grpc_opt=paths=source_relative \
 	  --grpc-gateway_out=gen --grpc-gateway_opt=paths=source_relative \
-	  -I proto proto/cardinality/v1/cardinality.proto
+	  -I proto -I third_party proto/cardinality/v1/cardinality.proto proto/cardinality/v1/command.proto
 
 bench:
 	go test ./bench/... -bench=. -benchmem -run=^$

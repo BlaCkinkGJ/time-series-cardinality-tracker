@@ -127,10 +127,10 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 		}
 		switch cmd.Type {
 		case pb.Command_ADD:
-			n.engine.Add(cmd.SeriesId, cmd.Value)
-			if h, ok := n.engine.Get(cmd.SeriesId); ok {
-				if err := n.store.Save(cmd.SeriesId, h); err != nil {
-					slog.Error("raft: failed to save to BadgerDB store", "series_id", cmd.SeriesId, "error", err)
+			n.engine.Add(cmd.Group, cmd.Id)
+			if h, ok := n.engine.Get(cmd.Group); ok {
+				if err := n.store.Save(cmd.Group, h); err != nil {
+					slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
 				}
 			}
 		}
@@ -177,8 +177,8 @@ func (n *Node) maybeSnapshot() {
 }
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
-func (n *Node) ProposeAdd(ctx context.Context, seriesID string, value []byte) error {
-	cmd := &pb.Command{Type: pb.Command_ADD, SeriesId: seriesID, Value: value}
+func (n *Node) ProposeAdd(ctx context.Context, group string, id []byte) error {
+	cmd := &pb.Command{Type: pb.Command_ADD, Group: group, Id: id}
 	data, err := proto.Marshal(cmd)
 	if err != nil {
 		return err

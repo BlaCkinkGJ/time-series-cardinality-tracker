@@ -6,18 +6,18 @@ option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;c
 import "google/api/annotations.proto";
 
 service CardinalityService {
-  // Add inserts a value into the HLL for a given series.
+  // Add inserts an ID into the HLL for a given group.
   rpc Add(AddRequest) returns (AddResponse) {
     option (google.api.http) = {
-      post: "/v1/series/{series_id}/add"
+      post: "/v1/group/{group}/add"
       body: "*"
     };
   }
 
-  // BatchAdd inserts multiple values in one call.
+  // BatchAdd inserts multiple IDs in one call.
   rpc BatchAdd(BatchAddRequest) returns (AddResponse) {
     option (google.api.http) = {
-      post: "/v1/series/{series_id}/batch"
+      post: "/v1/group/{group}/batch"
       body: "*"
     };
   }
@@ -25,19 +25,19 @@ service CardinalityService {
   // Query returns the current cardinality estimate.
   rpc Query(QueryRequest) returns (QueryResponse) {
     option (google.api.http) = {
-      get: "/v1/series/{series_id}/cardinality"
+      get: "/v1/group/{group}/cardinality"
     };
   }
 }
 
 message AddRequest {
-  string series_id = 1;
-  bytes  value     = 2;
+  string group = 1;
+  bytes  id    = 2;
 }
 
 message BatchAddRequest {
-  string         series_id = 1;
-  repeated bytes values    = 2;
+  string         group = 1;
+  repeated bytes ids   = 2;
 }
 
 message AddResponse {
@@ -45,11 +45,11 @@ message AddResponse {
 }
 
 message QueryRequest {
-  string series_id = 1;
-  bool   stale_ok  = 2;
+  string group    = 1;
+  bool   stale_ok = 2;
 }
 
 message QueryResponse {
-  string series_id   = 1;
+  string group       = 1;
   uint64 cardinality = 2;
 }

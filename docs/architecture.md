@@ -1,6 +1,6 @@
 # Architectural Design Document
 
-This document outlines the detailed system design and architectural components of the Distributed Time-Series Cardinality Tracker.
+This document outlines the detailed system design and architectural components of the Distributed Group Cardinality Tracker.
 
 ---
 
@@ -11,7 +11,7 @@ The tracker operates as a decentralized, shared-nothing cluster of nodes. The ro
 ```
                   +-----------------------------------+
                   |        Client Request             |
-                  |  (Add/Query series "my-series")   |
+                  |     (Add/Query group "my-group")  |
                   +-----------------+-----------------+
                                     |
                                     v
@@ -20,29 +20,29 @@ The tracker operates as a decentralized, shared-nothing cluster of nodes. The ro
                        |       (Node 1)          |
                        +------------+------------+
                                     |
-                       [Resolve Owner of "my-series"]
+                        [Resolve Owner of "my-group"]
                                     |
-                 +------------------+------------------+
-                 | (Resolves to Node 2)                | (Resolves to Node 1)
-                 v                                     v
-     +-----------+-----------+             +-----------+-----------+
-     |      gRPC Client      |             |     Local Engine      |
-     |   (Forward to Node 2) |             |  - Update HLL Sketch  |
-     +-----------+-----------+             |  - Propose to Raft    |
-                 |                         |  - Commit to Badger   |
-          (gRPC Network)                   +-----------------------+
-                 |
-                 v
-     +-----------+-----------+
-     |      gRPC Server      |
-     |       (Node 2)        |
-     +-----------+-----------+
-                 |
-        [Process Locally]
-                 v
-     +-----------------------+
-     |     Local Engine      |
-     +-----------------------+
+                  +------------------+------------------+
+                  | (Resolves to Node 2)                | (Resolves to Node 1)
+                  v                                     v
+      +-----------+-----------+             +-----------+-----------+
+      |      gRPC Client      |             |     Local Engine      |
+      |   (Forward to Node 2) |             |  - Update HLL Sketch  |
+      +-----------+-----------+             |  - Propose to Raft    |
+                  |                         |  - Commit to Badger   |
+           (gRPC Network)                   +-----------------------+
+                  |
+                  v
+      +-----------+-----------+
+      |      gRPC Server      |
+      |       (Node 2)        |
+      +-----------+-----------+
+                  |
+         [Process Locally]
+                  v
+      +-----------------------+
+      |     Local Engine      |
+      +-----------------------+
 ```
 
 ---
@@ -53,12 +53,12 @@ The tracker operates as a decentralized, shared-nothing cluster of nodes. The ro
 To ensure even distribution and prevent hotspotting, we implement a **Virtual-Node Consistent Hash Ring**:
 - **Hash Function**: 32-bit Murmur3 (`github.com/spaolacci/murmur3`), which provides extremely uniform keyspace distribution and low execution latency.
 - **Virtual Nodes**: 150 virtual nodes per physical host. Virtual nodes are hashed using `addr#vnode_index` (e.g. `node1:9090#0`, `node1:9090#1`).
-- **Binary Search Lookup**: Sorted slice of hash points is queried using `sort.Search` to map a series ID hash to the closest clockwise virtual node.
+- **Binary Search Lookup**: Sorted slice of hash points is queried using `sort.Search` to map a group hash to the closest clockwise virtual node.
 
 ### 2.2 gRPC & Proxy Layer (`internal/server`)
 Each node exposes both a REST gateway (`grpc-gateway`) and a gRPC server:
 - Nodes hold a thread-safe connection pool of clients (`map[string]*grpc.ClientConn`) for other peers.
-- When an API request comes in, the server evaluates `owner := ring.Resolve(seriesID)`.
+- When an API request comes in, the server evaluates `owner := ring.Resolve(group)`.
 - If `owner != selfAddr`, it forwards the request over the cached gRPC connection to the owner. This makes sharding completely transparent to external clients.
 
 ### 2.3 Raft Durability Layer (`internal/raft`)
@@ -75,7 +75,7 @@ Cardinality estimation is powered by a HyperLogLog++ implementation:
 
 ### 2.5 Storage Layer (`internal/store`)
 - **Engine**: BadgerDB v4, a fast Log-Structured Merge (LSM) key-value database written in Go.
-- **Key Layout**: Binary keys prefixing the series ID (`s_<series_id>`).
+- **Key Layout**: Binary keys prefixing the group (`hll/<group>`).
 - **Disk Sync**: Writes bypass CGO to avoid native dyld errors on macOS, providing a zero-dependency static build.
 
 ---
@@ -84,9 +84,9 @@ Cardinality estimation is powered by a HyperLogLog++ implementation:
 
 ### 3.1 Write path (Add Request)
 1. Request arrives at `node_X`.
-2. `node_X` hashes `series_id` and finds the owning node `node_Y`.
+2. `node_X` hashes `group` and finds the owning node `node_Y`.
 3. If `node_X == node_Y`:
-   - Proposes `Command_ADD` containing value to the local Raft group.
+   - Proposes `Command_ADD` containing ID to the local Raft group.
    - Raft appends log and advances state machine.
    - State machine updates in-memory HLL sketch registers.
    - Updated sketch registers are committed synchronously to BadgerDB.
@@ -96,7 +96,7 @@ Cardinality estimation is powered by a HyperLogLog++ implementation:
 
 ### 3.2 Read path (Query Request)
 1. Query arrives at `node_X`.
-2. `node_X` hashes `series_id` to find owner `node_Y`.
+2. `node_X` hashes `group` to find owner `node_Y`.
 3. If `node_X == node_Y`:
    - Node queries the local `hll.Engine` map in-memory.
    - Returns the estimated cardinality estimate instantly.

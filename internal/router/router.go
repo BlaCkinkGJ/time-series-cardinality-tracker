@@ -60,14 +60,14 @@ func (r *Ring) RemoveNode(addr string) {
 	r.ring = keep
 }
 
-// Resolve returns the node address responsible for seriesID.
-func (r *Ring) Resolve(seriesID string) string {
+// Resolve returns the node address responsible for group.
+func (r *Ring) Resolve(group string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if len(r.ring) == 0 {
 		return ""
 	}
-	h := murmur3.Sum32([]byte(seriesID))
+	h := murmur3.Sum32([]byte(group))
 	idx := sort.Search(len(r.ring), func(i int) bool { return r.ring[i] >= h })
 	if idx == len(r.ring) {
 		idx = 0

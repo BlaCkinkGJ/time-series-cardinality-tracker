@@ -24,15 +24,15 @@ import (
 
 // snapshotData is the serialised form of the full HLL Engine state.
 type snapshotData struct {
-	Series map[string][]byte // series_id → hll.Marshal() bytes
+	Groups map[string][]byte // group → hll.Marshal() bytes
 }
 
 // SnapshotEngine serialises all HLL state to a byte slice.
 func SnapshotEngine(eng *hll.Engine) ([]byte, error) {
-	sd := snapshotData{Series: make(map[string][]byte)}
+	sd := snapshotData{Groups: make(map[string][]byte)}
 	eng.Range(func(id string, h *hll.HLL) {
 		b, _ := h.Marshal()
-		sd.Series[id] = b
+		sd.Groups[id] = b
 	})
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(sd); err != nil {
@@ -47,7 +47,7 @@ func RestoreEngine(eng *hll.Engine, data []byte) error {
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&sd); err != nil {
 		return fmt.Errorf("snapshot decode: %w", err)
 	}
-	for id, b := range sd.Series {
+	for id, b := range sd.Groups {
 		h, err := hll.Unmarshal(b)
 		if err != nil {
 			return err

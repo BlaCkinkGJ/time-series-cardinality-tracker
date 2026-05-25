@@ -33,7 +33,7 @@ import (
 // RaftNode is the minimal interface the server needs from the Raft layer.
 // Implemented by *raft.Node in T7; nil means standalone mode.
 type RaftNode interface {
-	ProposeAdd(ctx context.Context, seriesID string, value []byte) error
+	ProposeAdd(ctx context.Context, group string, id []byte) error
 }
 
 // Server implements pb.CardinalityServiceServer.
@@ -77,17 +77,17 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		metricRequestDurationSeconds.WithLabelValues("Add").Observe(time.Since(start).Seconds())
 	}()
 
-	if req.SeriesId == "" {
+	if req.Group == "" {
 		statusStr = "error"
-		return nil, status.Error(codes.InvalidArgument, "series_id required")
+		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
-	if len(req.Value) == 0 {
+	if len(req.Id) == 0 {
 		statusStr = "error"
-		return nil, status.Error(codes.InvalidArgument, "value required")
+		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
-		owner := s.router.Resolve(req.SeriesId)
+		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
 			metricForwardedRequestsTotal.WithLabelValues(owner, "Add").Inc()
 			client, err := s.getPeerClient(owner)
@@ -104,16 +104,16 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 	}
 
 	if s.node != nil {
-		if err := s.node.ProposeAdd(ctx, req.SeriesId, req.Value); err != nil {
+		if err := s.node.ProposeAdd(ctx, req.Group, req.Id); err != nil {
 			statusStr = "error"
 			metricRaftProposalsTotal.WithLabelValues("error").Inc()
 			return nil, status.Errorf(codes.Internal, "raft propose: %v", err)
 		}
 		metricRaftProposalsTotal.WithLabelValues("success").Inc()
 	} else {
-		s.engine.Add(req.SeriesId, req.Value)
-		if h, ok := s.engine.Get(req.SeriesId); ok {
-			if err := s.store.Save(req.SeriesId, h); err != nil {
+		s.engine.Add(req.Group, req.Id)
+		if h, ok := s.engine.Get(req.Group); ok {
+			if err := s.store.Save(req.Group, h); err != nil {
 				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "store save: %v", err)
 			}
@@ -130,13 +130,13 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		metricRequestDurationSeconds.WithLabelValues("BatchAdd").Observe(time.Since(start).Seconds())
 	}()
 
-	if req.SeriesId == "" {
+	if req.Group == "" {
 		statusStr = "error"
-		return nil, status.Error(codes.InvalidArgument, "series_id required")
+		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
-		owner := s.router.Resolve(req.SeriesId)
+		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
 			metricForwardedRequestsTotal.WithLabelValues(owner, "BatchAdd").Inc()
 			client, err := s.getPeerClient(owner)
@@ -152,8 +152,8 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		}
 	}
 
-	for _, v := range req.Values {
-		if _, err := s.Add(ctx, &pb.AddRequest{SeriesId: req.SeriesId, Value: v}); err != nil {
+	for _, v := range req.Ids {
+		if _, err := s.Add(ctx, &pb.AddRequest{Group: req.Group, Id: v}); err != nil {
 			statusStr = "error"
 			return nil, err
 		}
@@ -169,13 +169,13 @@ func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResp
 		metricRequestDurationSeconds.WithLabelValues("Query").Observe(time.Since(start).Seconds())
 	}()
 
-	if req.SeriesId == "" {
+	if req.Group == "" {
 		statusStr = "error"
-		return nil, status.Error(codes.InvalidArgument, "series_id required")
+		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
-		owner := s.router.Resolve(req.SeriesId)
+		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
 			metricForwardedRequestsTotal.WithLabelValues(owner, "Query").Inc()
 			client, err := s.getPeerClient(owner)
@@ -191,8 +191,8 @@ func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResp
 		}
 	}
 
-	est := s.engine.Estimate(req.SeriesId)
-	return &pb.QueryResponse{SeriesId: req.SeriesId, Cardinality: est}, nil
+	est := s.engine.Estimate(req.Group)
+	return &pb.QueryResponse{Group: req.Group, Cardinality: est}, nil
 }
 
 func (s *Server) getPeerClient(addr string) (pb.CardinalityServiceClient, error) {

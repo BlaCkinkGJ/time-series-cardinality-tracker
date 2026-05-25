@@ -28,9 +28,9 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CardinalityServiceClient interface {
-	// Add inserts a value into the HLL for a given series.
+	// Add inserts an ID into the HLL for a given group.
 	Add(ctx context.Context, in *AddRequest, opts ...grpc.CallOption) (*AddResponse, error)
-	// BatchAdd inserts multiple values in one call.
+	// BatchAdd inserts multiple IDs in one call.
 	BatchAdd(ctx context.Context, in *BatchAddRequest, opts ...grpc.CallOption) (*AddResponse, error)
 	// Query returns the current cardinality estimate.
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
@@ -78,9 +78,9 @@ func (c *cardinalityServiceClient) Query(ctx context.Context, in *QueryRequest, 
 // All implementations must embed UnimplementedCardinalityServiceServer
 // for forward compatibility
 type CardinalityServiceServer interface {
-	// Add inserts a value into the HLL for a given series.
+	// Add inserts an ID into the HLL for a given group.
 	Add(context.Context, *AddRequest) (*AddResponse, error)
-	// BatchAdd inserts multiple values in one call.
+	// BatchAdd inserts multiple IDs in one call.
 	BatchAdd(context.Context, *BatchAddRequest) (*AddResponse, error)
 	// Query returns the current cardinality estimate.
 	Query(context.Context, *QueryRequest) (*QueryResponse, error)

@@ -1,26 +1,26 @@
 # API Specification
 
-This document defines the REST and gRPC API specifications for the Time-Series Cardinality Tracker.
+This document defines the REST and gRPC API specifications for the Group Cardinality Tracker.
 
 ---
 
 ## 1. REST API (HTTP/JSON)
 
-The HTTP REST API is exposed by the HTTP gateway. All request values (`value` or `values`) sent via JSON must be **Base64 encoded** byte slices.
+The HTTP REST API is exposed by the HTTP gateway. All request values (`id` or `ids`) sent via JSON must be **Base64 encoded** byte slices.
 
-### 1.1 Add Value
-Adds a single unique item to a time-series HLL sketch.
+### 1.1 Add ID
+Adds a single unique item to a group HLL sketch.
 
 - **Method**: `POST`
-- **Path**: `/v1/series/{series_id}/add`
+- **Path**: `/v1/group/{group}/add`
 - **Headers**:
   - `Content-Type: application/json`
 - **URL Parameters**:
-  - `series_id` (string): Unique identifier for the time-series.
+  - `group` (string): Unique identifier for the group.
 - **Request Body**:
   ```json
   {
-    "value": "<base64_encoded_value>"
+    "id": "<base64_encoded_id>"
   }
   ```
 - **Response Body**:
@@ -32,28 +32,28 @@ Adds a single unique item to a time-series HLL sketch.
 
 #### Example Request
 ```bash
-curl -X POST http://localhost:8081/v1/series/sensor-01/add \
+curl -X POST http://localhost:8081/v1/group/sensor-01/add \
   -H "Content-Type: application/json" \
-  -d '{"value": "dXNlci0xMjM="}'
+  -d '{"id": "dXNlci0xMjM="}'
 ```
 
 ---
 
-### 1.2 Batch Add Values
-Adds multiple unique items to a time-series HLL sketch in a single request.
+### 1.2 Batch Add IDs
+Adds multiple unique items to a group HLL sketch in a single request.
 
 - **Method**: `POST`
-- **Path**: `/v1/series/{series_id}/batch`
+- **Path**: `/v1/group/{group}/batch`
 - **Headers**:
   - `Content-Type: application/json`
 - **URL Parameters**:
-  - `series_id` (string): Unique identifier for the time-series.
+  - `group` (string): Unique identifier for the group.
 - **Request Body**:
   ```json
   {
-    "values": [
-      "<base64_encoded_value_1>",
-      "<base64_encoded_value_2>"
+    "ids": [
+      "<base64_encoded_id_1>",
+      "<base64_encoded_id_2>"
     ]
   }
   ```
@@ -66,31 +66,31 @@ Adds multiple unique items to a time-series HLL sketch in a single request.
 
 #### Example Request
 ```bash
-curl -X POST http://localhost:8081/v1/series/sensor-01/batch \
+curl -X POST http://localhost:8081/v1/group/sensor-01/batch \
   -H "Content-Type: application/json" \
-  -d '{"values": ["dXNlci00NTY=", "dXNlci03ODk="]}'
+  -d '{"ids": ["dXNlci00NTY=", "dXNlci03ODk="]}'
 ```
 
 ---
 
 ### 1.3 Query Cardinality
-Retrieves the estimated unique item count (cardinality) of a time-series.
+Retrieves the estimated unique item count (cardinality) of a group.
 
 - **Method**: `GET`
-- **Path**: `/v1/series/{series_id}/cardinality`
+- **Path**: `/v1/group/{group}/cardinality`
 - **URL Parameters**:
-  - `series_id` (string): Unique identifier for the time-series.
+  - `group` (string): Unique identifier for the group.
 - **Response Body**:
   ```json
   {
-    "seriesId": "sensor-01",
+    "group": "sensor-01",
     "cardinality": "3"
   }
   ```
 
 #### Example Request
 ```bash
-curl http://localhost:8081/v1/series/sensor-01/cardinality
+curl http://localhost:8081/v1/group/sensor-01/cardinality
 ```
 
 ---
@@ -127,16 +127,16 @@ service CardinalityService {
 #### `AddRequest`
 ```protobuf
 message AddRequest {
-  string series_id = 1;
-  bytes  value     = 2;
+  string group = 1;
+  bytes  id    = 2;
 }
 ```
 
 #### `BatchAddRequest`
 ```protobuf
 message BatchAddRequest {
-  string         series_id = 1;
-  repeated bytes values    = 2;
+  string         group = 1;
+  repeated bytes ids   = 2;
 }
 ```
 
@@ -150,15 +150,15 @@ message AddResponse {
 #### `QueryRequest`
 ```protobuf
 message QueryRequest {
-  string series_id = 1;
-  bool   stale_ok  = 2;
+  string group    = 1;
+  bool   stale_ok = 2;
 }
 ```
 
 #### `QueryResponse`
 ```protobuf
 message QueryResponse {
-  string series_id   = 1;
+  string group       = 1;
   uint64 cardinality = 2;
 }
 ```

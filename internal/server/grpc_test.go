@@ -77,15 +77,15 @@ func TestAddAndQuery(t *testing.T) {
 
 	for i := 0; i < 1000; i++ {
 		_, err := client.Add(ctx, &pb.AddRequest{
-			SeriesId: "my-series",
-			Value:    []byte(fmt.Sprintf("user-%d", i)),
+			Group: "my-group",
+			Id:    []byte(fmt.Sprintf("user-%d", i)),
 		})
 		if err != nil {
 			t.Fatalf("Add %d: %v", i, err)
 		}
 	}
 
-	resp, err := client.Query(ctx, &pb.QueryRequest{SeriesId: "my-series", StaleOk: true})
+	resp, err := client.Query(ctx, &pb.QueryRequest{Group: "my-group", StaleOk: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,14 +99,14 @@ func TestAdd_ValidationErrors(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := client.Add(ctx, &pb.AddRequest{SeriesId: "", Value: []byte("x")})
+	_, err := client.Add(ctx, &pb.AddRequest{Group: "", Id: []byte("x")})
 	if err == nil {
-		t.Fatal("expected error for empty series_id")
+		t.Fatal("expected error for empty group")
 	}
 
-	_, err = client.Add(ctx, &pb.AddRequest{SeriesId: "s", Value: nil})
+	_, err = client.Add(ctx, &pb.AddRequest{Group: "g", Id: nil})
 	if err == nil {
-		t.Fatal("expected error for empty value")
+		t.Fatal("expected error for empty id")
 	}
 }
 
@@ -115,15 +115,15 @@ func TestBatchAdd(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	values := make([][]byte, 500)
-	for i := range values {
-		values[i] = []byte(fmt.Sprintf("batch-%d", i))
+	ids := make([][]byte, 500)
+	for i := range ids {
+		ids[i] = []byte(fmt.Sprintf("batch-%d", i))
 	}
-	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{SeriesId: "batch-series", Values: values})
+	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: "batch-group", Ids: ids})
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := client.Query(ctx, &pb.QueryRequest{SeriesId: "batch-series", StaleOk: true})
+	resp, err := client.Query(ctx, &pb.QueryRequest{Group: "batch-group", StaleOk: true})
 	if err != nil {
 		t.Fatal(err)
 	}

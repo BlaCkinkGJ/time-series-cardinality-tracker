@@ -158,10 +158,10 @@ func BenchmarkDistributed_Add_Forward(b *testing.B) {
 		for p.Next() {
 			val := atomic.AddUint64(&globalCounter, 1)
 			clientIdx := int(val) % numNodes
-			seriesID := fmt.Sprintf("series-%d", val)
+			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
-				SeriesId: seriesID,
-				Value:    []byte(fmt.Sprintf("val-%d", val)),
+				Group: group,
+				Id:    []byte(fmt.Sprintf("val-%d", val)),
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)
@@ -275,10 +275,10 @@ func BenchmarkDistributed_Add_Forward_Latency5ms(b *testing.B) {
 		for p.Next() {
 			val := atomic.AddUint64(&globalCounter, 1)
 			clientIdx := int(val) % numNodes
-			seriesID := fmt.Sprintf("series-%d", val)
+			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
-				SeriesId: seriesID,
-				Value:    []byte(fmt.Sprintf("val-%d", val)),
+				Group: group,
+				Id:    []byte(fmt.Sprintf("val-%d", val)),
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)

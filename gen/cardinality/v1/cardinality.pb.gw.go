@@ -46,14 +46,14 @@ func request_CardinalityService_Add_0(ctx context.Context, marshaler runtime.Mar
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	msg, err := client.Add(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -76,14 +76,14 @@ func local_request_CardinalityService_Add_0(ctx context.Context, marshaler runti
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	msg, err := server.Add(ctx, &protoReq)
@@ -106,14 +106,14 @@ func request_CardinalityService_BatchAdd_0(ctx context.Context, marshaler runtim
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	msg, err := client.BatchAdd(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
@@ -136,14 +136,14 @@ func local_request_CardinalityService_BatchAdd_0(ctx context.Context, marshaler 
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	msg, err := server.BatchAdd(ctx, &protoReq)
@@ -152,7 +152,7 @@ func local_request_CardinalityService_BatchAdd_0(ctx context.Context, marshaler 
 }
 
 var (
-	filter_CardinalityService_Query_0 = &utilities.DoubleArray{Encoding: map[string]int{"series_id": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
+	filter_CardinalityService_Query_0 = &utilities.DoubleArray{Encoding: map[string]int{"group": 0}, Base: []int{1, 1, 0}, Check: []int{0, 1, 2}}
 )
 
 func request_CardinalityService_Query_0(ctx context.Context, marshaler runtime.Marshaler, client CardinalityServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -166,14 +166,14 @@ func request_CardinalityService_Query_0(ctx context.Context, marshaler runtime.M
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -199,14 +199,14 @@ func local_request_CardinalityService_Query_0(ctx context.Context, marshaler run
 		_   = err
 	)
 
-	val, ok = pathParams["series_id"]
+	val, ok = pathParams["group"]
 	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "series_id")
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "group")
 	}
 
-	protoReq.SeriesId, err = runtime.String(val)
+	protoReq.Group, err = runtime.String(val)
 	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "series_id", err)
+		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "group", err)
 	}
 
 	if err := req.ParseForm(); err != nil {
@@ -235,7 +235,7 @@ func RegisterCardinalityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Add", runtime.WithHTTPPathPattern("/v1/series/{series_id}/add"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Add", runtime.WithHTTPPathPattern("/v1/group/{group}/add"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -260,7 +260,7 @@ func RegisterCardinalityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/BatchAdd", runtime.WithHTTPPathPattern("/v1/series/{series_id}/batch"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/BatchAdd", runtime.WithHTTPPathPattern("/v1/group/{group}/batch"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -285,7 +285,7 @@ func RegisterCardinalityServiceHandlerServer(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Query", runtime.WithHTTPPathPattern("/v1/series/{series_id}/cardinality"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Query", runtime.WithHTTPPathPattern("/v1/group/{group}/cardinality"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -349,7 +349,7 @@ func RegisterCardinalityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Add", runtime.WithHTTPPathPattern("/v1/series/{series_id}/add"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Add", runtime.WithHTTPPathPattern("/v1/group/{group}/add"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -371,7 +371,7 @@ func RegisterCardinalityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/BatchAdd", runtime.WithHTTPPathPattern("/v1/series/{series_id}/batch"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/BatchAdd", runtime.WithHTTPPathPattern("/v1/group/{group}/batch"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -393,7 +393,7 @@ func RegisterCardinalityServiceHandlerClient(ctx context.Context, mux *runtime.S
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Query", runtime.WithHTTPPathPattern("/v1/series/{series_id}/cardinality"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/cardinality.v1.CardinalityService/Query", runtime.WithHTTPPathPattern("/v1/group/{group}/cardinality"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -413,11 +413,11 @@ func RegisterCardinalityServiceHandlerClient(ctx context.Context, mux *runtime.S
 }
 
 var (
-	pattern_CardinalityService_Add_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "series", "series_id", "add"}, ""))
+	pattern_CardinalityService_Add_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 1, 2, 2}, []string{"v1", "group", "add"}, ""))
 
-	pattern_CardinalityService_BatchAdd_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "series", "series_id", "batch"}, ""))
+	pattern_CardinalityService_BatchAdd_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 1, 2, 2}, []string{"v1", "group", "batch"}, ""))
 
-	pattern_CardinalityService_Query_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 2, 2, 3}, []string{"v1", "series", "series_id", "cardinality"}, ""))
+	pattern_CardinalityService_Query_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 1, 0, 4, 1, 5, 1, 2, 2}, []string{"v1", "group", "cardinality"}, ""))
 )
 
 var (
