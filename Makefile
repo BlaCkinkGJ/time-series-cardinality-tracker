@@ -1,6 +1,7 @@
 .PHONY: build test proto bench lint
 
 export GOTOOLCHAIN=local
+export CGO_ENABLED=0
 
 build:
 	go build ./...
