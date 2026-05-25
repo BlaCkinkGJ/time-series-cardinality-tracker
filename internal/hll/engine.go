@@ -26,7 +26,7 @@ type Engine struct {
 func NewEngine() *Engine { return &Engine{hlls: make(map[string]*HLL)} }
 
 // Add inserts value into the HLL for seriesID (creates entry if absent).
-func (e *Engine) Add(seriesID string, value []byte) {
+func (e *Engine) Add(seriesID, value string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	h, ok := e.hlls[seriesID]
@@ -34,7 +34,7 @@ func (e *Engine) Add(seriesID string, value []byte) {
 		h = New()
 		e.hlls[seriesID] = h
 	}
-	h.Add(value)
+	h.Add([]byte(value))
 }
 
 // Estimate returns the cardinality estimate for seriesID (0 if unknown).

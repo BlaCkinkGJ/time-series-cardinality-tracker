@@ -7,5 +7,5 @@ message Command {
   enum Type { ADD = 0; }
   Type   type  = 1;
   string group = 2;
-  bytes  id    = 3;
+  string id    = 3;
 }

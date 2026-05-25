@@ -78,7 +78,7 @@ func TestAddAndQuery(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		_, err := client.Add(ctx, &pb.AddRequest{
 			Group: "my-group",
-			Id:    []byte(fmt.Sprintf("user-%d", i)),
+			Id:    fmt.Sprintf("user-%d", i),
 		})
 		if err != nil {
 			t.Fatalf("Add %d: %v", i, err)
@@ -99,12 +99,12 @@ func TestAdd_ValidationErrors(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := client.Add(ctx, &pb.AddRequest{Group: "", Id: []byte("x")})
+	_, err := client.Add(ctx, &pb.AddRequest{Group: "", Id: "x"})
 	if err == nil {
 		t.Fatal("expected error for empty group")
 	}
 
-	_, err = client.Add(ctx, &pb.AddRequest{Group: "g", Id: nil})
+	_, err = client.Add(ctx, &pb.AddRequest{Group: "g", Id: ""})
 	if err == nil {
 		t.Fatal("expected error for empty id")
 	}
@@ -115,9 +115,9 @@ func TestBatchAdd(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	ids := make([][]byte, 500)
+	ids := make([]string, 500)
 	for i := range ids {
-		ids[i] = []byte(fmt.Sprintf("batch-%d", i))
+		ids[i] = fmt.Sprintf("batch-%d", i)
 	}
 	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: "batch-group", Ids: ids})
 	if err != nil {

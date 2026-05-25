@@ -178,7 +178,7 @@ func (n *Node) maybeSnapshot() {
 }
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
-func (n *Node) ProposeAdd(ctx context.Context, group string, id []byte) error {
+func (n *Node) ProposeAdd(ctx context.Context, group, id string) error {
 	cmd := &pb.Command{Type: pb.Command_ADD, Group: group, Id: id}
 	data, err := proto.Marshal(cmd)
 	if err != nil {

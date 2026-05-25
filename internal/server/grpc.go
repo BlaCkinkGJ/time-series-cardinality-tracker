@@ -33,7 +33,7 @@ import (
 // RaftNode is the minimal interface the server needs from the Raft layer.
 // Implemented by *raft.Node in T7; nil means standalone mode.
 type RaftNode interface {
-	ProposeAdd(ctx context.Context, group string, id []byte) error
+	ProposeAdd(ctx context.Context, group, id string) error
 }
 
 // Server implements pb.CardinalityServiceServer.
@@ -81,7 +81,7 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
-	if len(req.Id) == 0 {
+	if req.Id == "" {
 		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "id required")
 	}

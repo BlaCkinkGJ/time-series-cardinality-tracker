@@ -59,7 +59,7 @@ func BenchmarkEngine_Add_Parallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			eng.Add("ts-bench", []byte(fmt.Sprintf("val-%d", i)))
+			eng.Add("ts-bench", fmt.Sprintf("val-%d", i))
 			i++
 		}
 	})
@@ -161,7 +161,7 @@ func BenchmarkDistributed_Add_Forward(b *testing.B) {
 			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
 				Group: group,
-				Id:    []byte(fmt.Sprintf("val-%d", val)),
+				Id:    fmt.Sprintf("val-%d", val),
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)
@@ -278,7 +278,7 @@ func BenchmarkDistributed_Add_Forward_Latency5ms(b *testing.B) {
 			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
 				Group: group,
-				Id:    []byte(fmt.Sprintf("val-%d", val)),
+				Id:    fmt.Sprintf("val-%d", val),
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)

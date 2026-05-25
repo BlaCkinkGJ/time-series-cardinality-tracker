@@ -32,12 +32,12 @@ service CardinalityService {
 
 message AddRequest {
   string group = 1;
-  bytes  id    = 2;
+  string id    = 2;
 }
 
 message BatchAddRequest {
-  string         group = 1;
-  repeated bytes ids   = 2;
+  string          group = 1;
+  repeated string ids   = 2;
 }
 
 message AddResponse {

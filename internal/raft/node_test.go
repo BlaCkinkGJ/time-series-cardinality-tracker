@@ -50,7 +50,7 @@ func TestSingleNodePropose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := node.ProposeAdd(ctx, "ts-x", []byte("hello")); err != nil {
+	if err := node.ProposeAdd(ctx, "ts-x", "hello"); err != nil {
 		t.Fatalf("ProposeAdd: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestSingleNodePropose(t *testing.T) {
 func TestSnapshotRoundTrip(t *testing.T) {
 	eng := hll.NewEngine()
 	for i := 0; i < 5000; i++ {
-		eng.Add("ts-snap", []byte(fmt.Sprintf("v%d", i)))
+		eng.Add("ts-snap", fmt.Sprintf("v%d", i))
 	}
 	before := eng.Estimate("ts-snap")
 
