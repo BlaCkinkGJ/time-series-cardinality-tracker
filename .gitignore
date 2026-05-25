@@ -1,0 +1,10 @@
+# Binaries
+bin/
+server
+
+# Data directories
+/tmp/cardinality-data
+data/
+
+# OS files
+.DS_Store
