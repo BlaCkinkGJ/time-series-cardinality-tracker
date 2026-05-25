@@ -95,7 +95,7 @@ jobs:
         uses: bmuschko/setup-kubeconform@v1
 
       - name: Validate Manifests
-        run: kubeconform -summary -verbose -ignore-missing-resources ./deploy/kubernetes/
+        run: kubeconform -summary -verbose -ignore-missing-schemas ./deploy/kubernetes/
 
   validate-docker:
     name: Validate Docker Config
