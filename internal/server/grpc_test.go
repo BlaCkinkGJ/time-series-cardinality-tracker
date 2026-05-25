@@ -1,0 +1,120 @@
+// internal/server/grpc_test.go
+package server_test
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"os"
+	"testing"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/test/bufconn"
+
+	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
+	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/server"
+	"github.com/yourorg/cardinality-tracker/internal/store"
+)
+
+const bufSize = 1 << 20
+
+func newTestServer(t *testing.T) (pb.CardinalityServiceClient, func()) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "srv-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := hll.NewEngine()
+	srv := server.New(eng, st, nil) // nil raft → standalone
+
+	lis := bufconn.Listen(bufSize)
+	gs := grpc.NewServer()
+	pb.RegisterCardinalityServiceServer(gs, srv)
+	go gs.Serve(lis) //nolint:errcheck
+
+	conn, err := grpc.DialContext(
+		context.Background(), "bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
+			return lis.DialContext(ctx)
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return pb.NewCardinalityServiceClient(conn), func() {
+		conn.Close()
+		gs.Stop()
+		st.Close()
+		os.RemoveAll(dir)
+	}
+}
+
+func TestAddAndQuery(t *testing.T) {
+	client, cleanup := newTestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	for i := 0; i < 1000; i++ {
+		_, err := client.Add(ctx, &pb.AddRequest{
+			SeriesId: "my-series",
+			Value:    []byte(fmt.Sprintf("user-%d", i)),
+		})
+		if err != nil {
+			t.Fatalf("Add %d: %v", i, err)
+		}
+	}
+
+	resp, err := client.Query(ctx, &pb.QueryRequest{SeriesId: "my-series", StaleOk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Cardinality < 900 || resp.Cardinality > 1100 {
+		t.Fatalf("cardinality %d out of expected [900,1100]", resp.Cardinality)
+	}
+}
+
+func TestAdd_ValidationErrors(t *testing.T) {
+	client, cleanup := newTestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	_, err := client.Add(ctx, &pb.AddRequest{SeriesId: "", Value: []byte("x")})
+	if err == nil {
+		t.Fatal("expected error for empty series_id")
+	}
+
+	_, err = client.Add(ctx, &pb.AddRequest{SeriesId: "s", Value: nil})
+	if err == nil {
+		t.Fatal("expected error for empty value")
+	}
+}
+
+func TestBatchAdd(t *testing.T) {
+	client, cleanup := newTestServer(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	values := make([][]byte, 500)
+	for i := range values {
+		values[i] = []byte(fmt.Sprintf("batch-%d", i))
+	}
+	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{SeriesId: "batch-series", Values: values})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Query(ctx, &pb.QueryRequest{SeriesId: "batch-series", StaleOk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Cardinality < 450 || resp.Cardinality > 550 {
+		t.Fatalf("batch cardinality %d out of [450,550]", resp.Cardinality)
+	}
+}
