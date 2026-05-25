@@ -57,7 +57,7 @@ func main() {
 		slog.Error("open store failed", "error", err)
 		os.Exit(1)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	eng := hll.NewEngine()
 
@@ -116,7 +116,11 @@ func main() {
 	mainMux.Handle("/metrics", promhttp.Handler())
 	mainMux.Handle("/", mux)
 
-	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", *httpPort), Handler: mainMux}
+	httpSrv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", *httpPort),
+		Handler:           mainMux,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
 	go func() {
 		slog.Info("HTTP gateway listening", "port", *httpPort)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

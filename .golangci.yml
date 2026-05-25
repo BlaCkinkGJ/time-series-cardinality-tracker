@@ -15,25 +15,32 @@ linters:
     - sqlclosecheck
   disable:
     - depguard
-
-linters-settings:
-  revive:
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true  # generated protobuf code triggers this
+        - name: package-comments
+          disabled: true  # package-comments is ignored since we have no package docs
+  exclusions:
+    paths:
+      - "gen/.*"
     rules:
-      - name: exported
-        disabled: true  # generated protobuf code triggers this
-
-issues:
-  # Exclude generated protobuf / gateway code from all linting
-  exclude-dirs:
-    - gen
-  exclude-rules:
-    # grpc.Dial is deprecated but generated gateway code still uses it
-    - linters: [staticcheck]
-      text: "SA1019"
-    # Integer overflow conversion in generated code
-    - linters: [gosec]
-      text: "G115"
-    # Fire-and-forget gs.Serve in tests is intentional
-    - linters: [errcheck]
-      path: "_test\\.go"
-      text: "gs\\.Serve"
+      # grpc.Dial is deprecated but generated gateway code still uses it
+      - linters: [staticcheck]
+        text: "SA1019"
+      # Integer overflow conversion in generated/test code
+      - linters: [gosec]
+        text: "G115"
+      # Fire-and-forget gs.Serve in tests is intentional
+      - linters: [errcheck]
+        path: "(.+)_test\\.go"
+        text: "gs\\.Serve"
+      # Ignore errcheck and gosec in test files
+      - path: "(.+)_test\\.go"
+        linters:
+          - errcheck
+          - gosec
+      # Exclude net.Listen warnings from noctx
+      - linters: [noctx]
+        text: "net.Listen must not be called"

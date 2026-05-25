@@ -215,6 +215,6 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, conn := range s.conns {
-		conn.Close()
+		_ = conn.Close()
 	}
 }
