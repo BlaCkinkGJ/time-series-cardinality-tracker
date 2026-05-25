@@ -1,0 +1,40 @@
+version: "3.9"
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "0:0"
+    command: ["-grpc-port=9090", "-http-port=8080", "-data=/data", "-node-id=1", "-peers=node1:9090,node2:9090,node3:9090"]
+    ports:
+      - "9091:9090"
+      - "8081:8080"
+    volumes:
+      - node1-data:/data
+  node2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "0:0"
+    command: ["-grpc-port=9090", "-http-port=8080", "-data=/data", "-node-id=2", "-peers=node1:9090,node2:9090,node3:9090"]
+    ports:
+      - "9092:9090"
+      - "8082:8080"
+    volumes:
+      - node2-data:/data
+  node3:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "0:0"
+    command: ["-grpc-port=9090", "-http-port=8080", "-data=/data", "-node-id=3", "-peers=node1:9090,node2:9090,node3:9090"]
+    ports:
+      - "9093:9090"
+      - "8083:8080"
+    volumes:
+      - node3-data:/data
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
