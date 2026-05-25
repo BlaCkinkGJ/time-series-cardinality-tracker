@@ -55,7 +55,7 @@ func (h *HLL) Add(value []byte) {
 func (h *HLL) Estimate() uint64 {
 	var sum float64
 	var zeros int
-	for _, v := range h.regs {
+	for _, v := range &h.regs {
 		sum += math.Pow(2, -float64(v))
 		if v == 0 {
 			zeros++

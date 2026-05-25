@@ -15,6 +15,7 @@
 package store_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"testing"
@@ -63,7 +64,7 @@ func TestLoad_NotFound(t *testing.T) {
 	s, cleanup := tempStore(t)
 	defer cleanup()
 	_, err := s.Load("nonexistent")
-	if err != store.ErrNotFound {
+	if !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }

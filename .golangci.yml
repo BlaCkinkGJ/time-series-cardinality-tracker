@@ -2,17 +2,32 @@ version: "2"
 
 run:
   timeout: 5m
+  build-tags:
+    - integration
 
 linters:
   default: standard
   enable:
-    - misspell
-    - revive
-    - gosec
+    # Code quality / correctness
     - bodyclose
     - noctx
     - rowserrcheck
     - sqlclosecheck
+    - gosec
+    - revive
+    - misspell
+    # Style & cleanliness
+    - goconst
+    - unparam
+    - unconvert
+    - nakedret
+    - prealloc
+    - whitespace
+    - gocritic
+    - nilerr
+    - errorlint
+    - forcetypeassert
+    - makezero
   disable:
     - depguard
   settings:
@@ -22,6 +37,20 @@ linters:
           disabled: true  # generated protobuf code triggers this
         - name: package-comments
           disabled: true  # package-comments is ignored since we have no package docs
+        - name: unused-parameter
+          disabled: true  # sometimes we have unimplemented interfaces
+    gosec:
+      excludes:
+        - G104
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+        - unnamedResult
   exclusions:
     paths:
       - "gen/.*"
@@ -36,11 +65,16 @@ linters:
       - linters: [errcheck]
         path: "(.+)_test\\.go"
         text: "gs\\.Serve"
-      # Ignore errcheck and gosec in test files
+      # Ignore errcheck, gosec, forcetypeassert, and unparam in test files
       - path: "(.+)_test\\.go"
         linters:
           - errcheck
           - gosec
+          - forcetypeassert
+          - unparam
       # Exclude net.Listen warnings from noctx
       - linters: [noctx]
         text: "net.Listen must not be called"
+      # Ignore goconst for common short strings
+      - linters: [goconst]
+        text: 'string `(error|method)`'

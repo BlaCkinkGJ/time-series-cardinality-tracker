@@ -52,10 +52,16 @@ var (
 func main() {
 	flag.Parse()
 
+	if err := run(); err != nil {
+		slog.Error("server run failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	st, err := store.Open(*dataDir)
 	if err != nil {
-		slog.Error("open store failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open store failed: %w", err)
 	}
 	defer func() { _ = st.Close() }()
 
@@ -87,8 +93,7 @@ func main() {
 	// ── gRPC ──
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", *grpcPort))
 	if err != nil {
-		slog.Error("listen grpc failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("listen grpc failed: %w", err)
 	}
 	gs := grpc.NewServer()
 	pb.RegisterCardinalityServiceServer(gs, srv)
@@ -108,8 +113,7 @@ func main() {
 	if err := pb.RegisterCardinalityServiceHandlerFromEndpoint(
 		ctx, mux, fmt.Sprintf("localhost:%d", *grpcPort), opts,
 	); err != nil {
-		slog.Error("register gateway failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("register gateway failed: %w", err)
 	}
 
 	mainMux := http.NewServeMux()
@@ -140,4 +144,5 @@ func main() {
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("HTTP gateway shutdown failed", "error", err)
 	}
+	return nil
 }

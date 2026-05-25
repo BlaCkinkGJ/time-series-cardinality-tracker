@@ -16,6 +16,7 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -70,7 +71,7 @@ func NewNode(id uint64, peers []Peer, engine *hll.Engine, st *store.BadgerStore)
 		MaxSizePerMsg:   4096,
 		MaxInflightMsgs: 256,
 	}
-	var rpeers []etcdraft.Peer
+	rpeers := make([]etcdraft.Peer, 0, len(peers))
 	for _, p := range peers {
 		rpeers = append(rpeers, etcdraft.Peer{ID: p.ID})
 	}
@@ -167,7 +168,7 @@ func (n *Node) maybeSnapshot() {
 		slog.Error("raft: apply snapshot error", "error", err)
 		return
 	}
-	if err := n.storage.Compact(idx); err != nil && err != etcdraft.ErrCompacted {
+	if err := n.storage.Compact(idx); err != nil && !errors.Is(err, etcdraft.ErrCompacted) {
 		slog.Error("raft: compact error", "error", err)
 	}
 	n.mu.Lock()

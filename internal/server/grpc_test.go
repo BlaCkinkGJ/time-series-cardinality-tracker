@@ -49,7 +49,7 @@ func newTestServer(t *testing.T) (pb.CardinalityServiceClient, func()) {
 	lis := bufconn.Listen(bufSize)
 	gs := grpc.NewServer()
 	pb.RegisterCardinalityServiceServer(gs, srv)
-	go gs.Serve(lis) //nolint:errcheck
+	go gs.Serve(lis)
 
 	conn, err := grpc.DialContext(
 		context.Background(), "bufnet",
