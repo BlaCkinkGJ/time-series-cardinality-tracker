@@ -5,13 +5,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
@@ -39,7 +40,8 @@ func main() {
 
 	st, err := store.Open(*dataDir)
 	if err != nil {
-		log.Fatalf("open store: %v", err)
+		slog.Error("open store failed", "error", err)
+		os.Exit(1)
 	}
 	defer st.Close()
 
@@ -71,15 +73,16 @@ func main() {
 	// ── gRPC ──
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", *grpcPort))
 	if err != nil {
-		log.Fatalf("listen grpc: %v", err)
+		slog.Error("listen grpc failed", "error", err)
+		os.Exit(1)
 	}
 	gs := grpc.NewServer()
 	pb.RegisterCardinalityServiceServer(gs, srv)
 	reflection.Register(gs)
 	go func() {
-		log.Printf("gRPC listening on :%d", *grpcPort)
+		slog.Info("gRPC listening", "port", *grpcPort)
 		if err := gs.Serve(grpcLis); err != nil {
-			log.Printf("grpc serve: %v", err)
+			slog.Error("grpc serve failed", "error", err)
 		}
 	}()
 
@@ -91,14 +94,15 @@ func main() {
 	if err := pb.RegisterCardinalityServiceHandlerFromEndpoint(
 		ctx, mux, fmt.Sprintf("localhost:%d", *grpcPort), opts,
 	); err != nil {
-		log.Fatalf("register gateway: %v", err)
+		slog.Error("register gateway failed", "error", err)
+		os.Exit(1)
 	}
 
 	httpSrv := &http.Server{Addr: fmt.Sprintf(":%d", *httpPort), Handler: mux}
 	go func() {
-		log.Printf("HTTP gateway listening on :%d", *httpPort)
+		slog.Info("HTTP gateway listening", "port", *httpPort)
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("http serve: %v", err)
+			slog.Error("http serve failed", "error", err)
 		}
 	}()
 
@@ -106,7 +110,12 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
-	log.Println("shutting down…")
+	slog.Info("shutting down…")
 	gs.GracefulStop()
-	httpSrv.Shutdown(ctx) //nolint:errcheck
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("HTTP gateway shutdown failed", "error", err)
+	}
 }

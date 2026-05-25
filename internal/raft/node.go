@@ -3,7 +3,7 @@ package raft
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -92,7 +92,7 @@ func (n *Node) Run() {
 			}(p)
 		case rd := <-n.node.Ready():
 			if err := n.storage.Append(rd.Entries); err != nil {
-				log.Printf("raft: storage append: %v", err)
+				slog.Error("raft: storage append error", "error", err)
 			}
 			n.applyEntries(rd.CommittedEntries)
 			n.node.Advance()
@@ -109,14 +109,16 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 		}
 		var cmd pb.Command
 		if err := proto.Unmarshal(e.Data, &cmd); err != nil {
-			log.Printf("raft: bad entry at index %d: %v", e.Index, err)
+			slog.Error("raft: bad entry unmarshal error", "index", e.Index, "error", err)
 			continue
 		}
 		switch cmd.Type {
 		case pb.Command_ADD:
 			n.engine.Add(cmd.SeriesId, cmd.Value)
 			if h, ok := n.engine.Get(cmd.SeriesId); ok {
-				_ = n.store.Save(cmd.SeriesId, h)
+				if err := n.store.Save(cmd.SeriesId, h); err != nil {
+					slog.Error("raft: failed to save to BadgerDB store", "series_id", cmd.SeriesId, "error", err)
+				}
 			}
 		}
 		n.mu.Lock()
@@ -138,7 +140,7 @@ func (n *Node) maybeSnapshot() {
 
 	data, err := SnapshotEngine(n.engine)
 	if err != nil {
-		log.Printf("raft: snapshot encode: %v", err)
+		slog.Error("raft: snapshot encode error", "error", err)
 		return
 	}
 	snap := raftpb.Snapshot{
@@ -149,16 +151,16 @@ func (n *Node) maybeSnapshot() {
 		},
 	}
 	if err := n.storage.ApplySnapshot(snap); err != nil {
-		log.Printf("raft: apply snapshot: %v", err)
+		slog.Error("raft: apply snapshot error", "error", err)
 		return
 	}
 	if err := n.storage.Compact(idx); err != nil && err != etcdraft.ErrCompacted {
-		log.Printf("raft: compact: %v", err)
+		slog.Error("raft: compact error", "error", err)
 	}
 	n.mu.Lock()
 	n.snapCount = 0
 	n.mu.Unlock()
-	log.Printf("raft: snapshot taken at index %d", idx)
+	slog.Info("raft: snapshot taken successfully", "index", idx)
 }
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
