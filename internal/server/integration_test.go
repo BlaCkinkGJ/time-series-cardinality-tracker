@@ -48,7 +48,7 @@ func TestIntegration_AddQuery_WithRaft(t *testing.T) {
 	}
 	defer lis.Close()
 
-	srv := server.New(eng, st, node)
+	srv := server.New(eng, st, node, nil, "")
 	gs := grpc.NewServer()
 	pb.RegisterCardinalityServiceServer(gs, srv)
 	go gs.Serve(lis)

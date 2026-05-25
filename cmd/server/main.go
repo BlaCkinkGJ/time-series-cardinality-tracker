@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -19,14 +20,18 @@ import (
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
 	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/raft"
+	"github.com/yourorg/cardinality-tracker/internal/router"
 	"github.com/yourorg/cardinality-tracker/internal/server"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
 var (
-	grpcPort = flag.Int("grpc-port", 9090, "gRPC listen port")
-	httpPort = flag.Int("http-port", 8080, "HTTP gateway listen port")
-	dataDir  = flag.String("data", "/tmp/cardinality-data", "BadgerDB data directory")
+	grpcPort  = flag.Int("grpc-port", 9090, "gRPC listen port")
+	httpPort  = flag.Int("http-port", 8080, "HTTP gateway listen port")
+	dataDir   = flag.String("data", "/tmp/cardinality-data", "BadgerDB data directory")
+	nodeID    = flag.Uint64("node-id", 1, "Raft Node ID")
+	peersFlag = flag.String("peers", "", "Comma-separated list of peers (host:port)")
 )
 
 func main() {
@@ -39,7 +44,29 @@ func main() {
 	defer st.Close()
 
 	eng := hll.NewEngine()
-	srv := server.New(eng, st, nil) // Raft node wired in T7+T8
+
+	var ring *router.Ring
+	var selfAddr string
+
+	if *peersFlag != "" {
+		peerAddrs := strings.Split(*peersFlag, ",")
+		ring = router.New()
+		for _, addr := range peerAddrs {
+			ring.AddNode(addr)
+		}
+		if *nodeID > 0 && int(*nodeID) <= len(peerAddrs) {
+			selfAddr = peerAddrs[*nodeID-1]
+		}
+	}
+
+	peers := []raft.Peer{{ID: *nodeID}}
+
+	node := raft.NewNode(*nodeID, peers, eng, st)
+	go node.Run()
+	defer node.Stop()
+
+	srv := server.New(eng, st, node, ring, selfAddr)
+	defer srv.Close()
 
 	// ── gRPC ──
 	grpcLis, err := net.Listen("tcp", fmt.Sprintf(":%d", *grpcPort))

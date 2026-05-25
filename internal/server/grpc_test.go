@@ -31,7 +31,7 @@ func newTestServer(t *testing.T) (pb.CardinalityServiceClient, func()) {
 		t.Fatal(err)
 	}
 	eng := hll.NewEngine()
-	srv := server.New(eng, st, nil) // nil raft → standalone
+	srv := server.New(eng, st, nil, nil, "") // nil raft → standalone
 
 	lis := bufconn.Listen(bufSize)
 	gs := grpc.NewServer()
