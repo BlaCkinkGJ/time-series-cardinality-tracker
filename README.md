@@ -11,7 +11,7 @@ This is a sharded time-series cardinality tracker implemented in Go.
 - **murmur3 + Consistent Hashing** (Shard routing and request forwarding)
 
 ## Architecture Overview
-For detailed design decisions, see [docs/architecture.md](docs/architecture.md) and [docs/explainable.md](docs/explainable.md).
+For detailed design decisions, see [docs/architecture.md](docs/architecture.md) and [docs/theory.md](docs/theory.md).
 
 ```
                  +-----------------------+
@@ -56,6 +56,7 @@ Ports:
 - Node 3 HTTP: `8083` (gRPC: `9093`)
 
 ### API Usage
+For the complete API request/response definitions and gRPC payloads, refer to [docs/api-spec.md](docs/api-spec.md).
 
 #### Add Value
 ```bash
