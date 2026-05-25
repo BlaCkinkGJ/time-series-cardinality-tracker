@@ -103,12 +103,12 @@ Actual benchmark results on Apple Silicon (M-series / arm64):
 goos: darwin
 goarch: arm64
 pkg: github.com/yourorg/cardinality-tracker/bench
-BenchmarkHLL_Add-10                            	182303275	         6.563 ns/op	       0 B/op	       0 allocs/op
-BenchmarkHLL_Estimate-10                       	    5050	    227646 ns/op	       0 B/op	       0 allocs/op
-BenchmarkEngine_Add_Parallel-10                	 9043989	       125.1 ns/op	      39 B/op	       2 allocs/op
-BenchmarkHLL_Marshal-10                        	 2831702	       493.9 ns/op	       0 B/op	       0 allocs/op
-BenchmarkDistributed_Add_Forward-10            	   40783	     72420 ns/op	  248184 B/op	     366 allocs/op
-BenchmarkDistributed_Add_Forward_Latency5ms-10 	    2776	    413626 ns/op	   53805 B/op	     367 allocs/op
+BenchmarkHLL_Add-10                            	184483040	         6.557 ns/op	       0 B/op	       0 allocs/op
+BenchmarkHLL_Estimate-10                       	    4857	    227917 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEngine_Add_Parallel-10                	 9261643	       131.2 ns/op	      39 B/op	       2 allocs/op
+BenchmarkHLL_Marshal-10                        	 2628984	       433.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkDistributed_Add_Forward-10            	   44205	     44285 ns/op	  233215 B/op	     366 allocs/op
+BenchmarkDistributed_Add_Forward_Latency5ms-10 	    2845	    406251 ns/op	   53800 B/op	     368 allocs/op
 ```
 
 ## License

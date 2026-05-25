@@ -7,6 +7,7 @@ toolchain go1.21.3
 require (
 	github.com/dgraph-io/badger/v4 v4.2.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.20.0
+	github.com/prometheus/client_golang v1.18.0
 	github.com/spaolacci/murmur3 v1.1.0
 	go.etcd.io/etcd/raft/v3 v3.5.13
 	google.golang.org/genproto/googleapis/api v0.0.0-20240513163218-0867130af1f8
@@ -15,6 +16,7 @@ require (
 )
 
 require (
+	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/dgraph-io/ristretto v0.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
@@ -25,7 +27,11 @@ require (
 	github.com/golang/snappy v0.0.3 // indirect
 	github.com/google/flatbuffers v1.12.1 // indirect
 	github.com/klauspost/compress v1.12.3 // indirect
+	github.com/matttproud/golang_protobuf_extensions/v2 v2.0.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/prometheus/client_model v0.5.0 // indirect
+	github.com/prometheus/common v0.45.0 // indirect
+	github.com/prometheus/procfs v0.12.0 // indirect
 	go.opencensus.io v0.22.5 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect

@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -56,32 +57,51 @@ func (s *Server) SetDialOptions(opts ...grpc.DialOption) {
 }
 
 func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, error) {
+	start := time.Now()
+	var statusStr = "success"
+	defer func() {
+		metricRequestsTotal.WithLabelValues("Add", statusStr).Inc()
+		metricRequestDurationSeconds.WithLabelValues("Add").Observe(time.Since(start).Seconds())
+	}()
+
 	if req.SeriesId == "" {
+		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "series_id required")
 	}
 	if len(req.Value) == 0 {
+		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "value required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.SeriesId)
 		if owner != "" && owner != s.selfAddr {
+			metricForwardedRequestsTotal.WithLabelValues(owner, "Add").Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
+				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
-			return client.Add(ctx, req)
+			resp, err := client.Add(ctx, req)
+			if err != nil {
+				statusStr = "error"
+			}
+			return resp, err
 		}
 	}
 
 	if s.node != nil {
 		if err := s.node.ProposeAdd(ctx, req.SeriesId, req.Value); err != nil {
+			statusStr = "error"
+			metricRaftProposalsTotal.WithLabelValues("error").Inc()
 			return nil, status.Errorf(codes.Internal, "raft propose: %v", err)
 		}
+		metricRaftProposalsTotal.WithLabelValues("success").Inc()
 	} else {
 		s.engine.Add(req.SeriesId, req.Value)
 		if h, ok := s.engine.Get(req.SeriesId); ok {
 			if err := s.store.Save(req.SeriesId, h); err != nil {
+				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "store save: %v", err)
 			}
 		}
@@ -90,23 +110,38 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 }
 
 func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.AddResponse, error) {
+	start := time.Now()
+	var statusStr = "success"
+	defer func() {
+		metricRequestsTotal.WithLabelValues("BatchAdd", statusStr).Inc()
+		metricRequestDurationSeconds.WithLabelValues("BatchAdd").Observe(time.Since(start).Seconds())
+	}()
+
 	if req.SeriesId == "" {
+		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "series_id required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.SeriesId)
 		if owner != "" && owner != s.selfAddr {
+			metricForwardedRequestsTotal.WithLabelValues(owner, "BatchAdd").Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
+				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
-			return client.BatchAdd(ctx, req)
+			resp, err := client.BatchAdd(ctx, req)
+			if err != nil {
+				statusStr = "error"
+			}
+			return resp, err
 		}
 	}
 
 	for _, v := range req.Values {
 		if _, err := s.Add(ctx, &pb.AddRequest{SeriesId: req.SeriesId, Value: v}); err != nil {
+			statusStr = "error"
 			return nil, err
 		}
 	}
@@ -114,18 +149,32 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 }
 
 func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResponse, error) {
+	start := time.Now()
+	var statusStr = "success"
+	defer func() {
+		metricRequestsTotal.WithLabelValues("Query", statusStr).Inc()
+		metricRequestDurationSeconds.WithLabelValues("Query").Observe(time.Since(start).Seconds())
+	}()
+
 	if req.SeriesId == "" {
+		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "series_id required")
 	}
 
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.SeriesId)
 		if owner != "" && owner != s.selfAddr {
+			metricForwardedRequestsTotal.WithLabelValues(owner, "Query").Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
+				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
-			return client.Query(ctx, req)
+			resp, err := client.Query(ctx, req)
+			if err != nil {
+				statusStr = "error"
+			}
+			return resp, err
 		}
 	}
 
