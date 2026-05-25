@@ -90,6 +90,14 @@ Run benchmarks using:
 make bench
 ```
 
+#### Benchmark Settings & Scenarios
+- `BenchmarkHLL_Add`: Factual latency of updating a single local HLL++ sketch.
+- `BenchmarkHLL_Estimate`: Factual latency of estimating cardinality for a series with 10k unique items.
+- `BenchmarkEngine_Add_Parallel`: Concurrent throughput test updating a shared, thread-safe local engine map.
+- `BenchmarkHLL_Marshal`: Factual latency of encoding the HLL register state.
+- `BenchmarkDistributed_Add_Forward`: Local simulation of a 3-node sharded cluster. Measures the overhead of consistent-hash lookup and gRPC request sharding/forwarding to peer nodes.
+- `BenchmarkDistributed_Add_Forward_Latency5ms`: 3-node cluster simulation with an artificial 5ms network delay injected into peer gRPC connection dials to simulate cross-host/cross-AZ network latency.
+
 Actual benchmark results on Apple Silicon (M-series / arm64):
 ```
 goos: darwin
