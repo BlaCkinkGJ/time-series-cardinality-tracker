@@ -19,33 +19,32 @@ For detailed design decisions, see [docs/architecture.md](docs/architecture.md) 
                  |   (Any Entry Node)    |
                  +-----------+-----------+
                              |
-             [Consistent Hash: Resolve Group Owner]
+             [Consistent Hash: Resolve Shard]
                              |
-              +--------------+---------------+
-              |                              |
-              v                              v
-   +---------------------+        +---------------------+
-   |      Node 1         |        |      Node 2         |
-   |  +---------------+  |        |  +---------------+  |
-   |  |  Shard A      |  |        |  |  Shard B      |  |
-   |  |  (Raft Group) |  |        |  |  (Raft Group) |  |
-   |  |  +----------+ |  |        |  |  +----------+ |  |
-   |  |  | BadgerDB | |  |        |  |  | BadgerDB | |  |
-   |  |  +----------+ |  |        |  |  +----------+ |  |
-   |  +---------------+  |        |  +---------------+  |
-   |  +---------------+  |        |  +---------------+  |
-   |  |  Shard C      |  |        |  |  Shard D      |  |
-   |  |  (Raft Group) |  |        |  |  (Raft Group) |  |
-   |  |  +----------+ |  |        |  |  +----------+ |  |
-   |  |  | BadgerDB | |  |        |  |  | BadgerDB | |  |
-   |  |  +----------+ |  |        |  |  +----------+ |  |
-   |  +---------------+  |        |  +---------------+  |
-   +---------------------+        +---------------------+
+                             v
+              +------------------------------+
+              |         Shard (Group)        |
+              |    +--------------------+    |
+              |    |    Raft Group      |    |
+              |    | (Leader/Followers) |    |
+              |    +---------+----------+    |
+              +--------------|---------------+
+                             |
+         +-------------------+-------------------+
+         |                   |                   |
+         v                   v                   v
+   +-----------+       +-----------+       +-----------+
+   |  Node 1   |       |  Node 2   |       |  Node 3   |
+   | (Replica) |       | (Replica) |       | (Replica) |
+   | +-------+ |       | +-------+ |       | +-------+ |
+   | |BadgerDB| |       | |BadgerDB| |       | |BadgerDB| |
+   | +-------+ |       | +-------+ |       | +-------+ |
+   +-----------+       +-----------+       +-----------+
 ```
 
-1. **Shard Routing**: Each `group` is assigned to a node using a consistent hash ring (150 virtual nodes per node). A node hosts multiple groups (shards).
-2. **Request Forwarding**: Nodes forward requests to the responsible peer over gRPC if they do not own the shard.
-3. **Local Durability**: Each **shard** utilizes a Raft group (`go.etcd.io/etcd/raft/v3`) for its own local store: proposals are written to the Raft log, applied to the in-memory HLL engine, and committed to BadgerDB.
+1. **Shard Routing**: Each `group` maps to a **shard**. The shard's Raft group is replicated across 3+ nodes.
+2. **Request Forwarding**: The consistent hash resolves the shard. Requests are routed to the leader node of that shard's Raft group.
+3. **Local Durability**: Each **shard** has a Raft group. Proposals are written to the Raft log, applied to the in-memory HLL engine, and committed to BadgerDB on every replica node.
 
 ---
 
