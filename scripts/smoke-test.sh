@@ -27,7 +27,7 @@ echo "Initial cardinality verified: 0"
 # Add 100 IDs to node 1
 echo "==> Adding 100 items via node 1 HTTP gateway..."
 for i in $(seq 1 100); do
-  val=$(echo -n "user-$i" | base64)
+  val="user-$i"
   curl -s -X POST http://localhost:8081/v1/group/prod/add -d "{\"id\":\"$val\"}" > /dev/null
 done
 
