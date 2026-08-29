@@ -16,20 +16,20 @@ var ErrUnknownGroup = errors.New("cardinality: unknown group")
 var ErrAlgoMismatch = errors.New("cardinality: sketch algo does not match engine")
 
 // Engine is a per-group cardinality store for a single algorithm.
-// Each group holds the algorithm's sketch serialised to bytes; the
-// sketch is rehydrated via the registered Algorithm on demand.
+// Each group holds a live Sketch; bytes are only materialised for
+// snapshots via Marshal.
 //
 // Engine is safe for concurrent use.
 type Engine struct {
 	mu     sync.RWMutex
 	alg    Algorithm
-	groups map[string][]byte
+	groups map[string]Sketch
 }
 
 // NewEngine returns an Engine backed by alg. All groups stored in
 // this engine use alg; Merge enforces sketch.AlgoName == alg.Name().
 func NewEngine(alg Algorithm) *Engine {
-	return &Engine{alg: alg, groups: make(map[string][]byte)}
+	return &Engine{alg: alg, groups: make(map[string]Sketch)}
 }
 
 // Add inserts id into group's sketch, creating the group if absent.
@@ -37,19 +37,12 @@ func (e *Engine) Add(group string, id uint64) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	b, ok := e.groups[group]
+	sk, ok := e.groups[group]
 	if !ok {
-		sk := e.alg.New()
-		sk.Add(id)
-		e.groups[group] = sk.Bytes()
-		return nil
-	}
-	sk, err := e.alg.Parse(b)
-	if err != nil {
-		return fmt.Errorf("cardinality: parse %q: %w", group, err)
+		sk = e.alg.New()
+		e.groups[group] = sk
 	}
 	sk.Add(id)
-	e.groups[group] = sk.Bytes()
 	return nil
 }
 
@@ -59,20 +52,17 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	b, ok := e.groups[group]
+	sk, ok := e.groups[group]
 	if !ok {
 		return 0, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
-	}
-	sk, err := e.alg.Parse(b)
-	if err != nil {
-		return 0, fmt.Errorf("cardinality: parse %q: %w", group, err)
 	}
 	return sk.Cardinality(), nil
 }
 
 // Merge unions remote into group's sketch. Returns ErrAlgoMismatch
 // if remote's AlgoName does not match this engine's algorithm.
-// If the group does not exist, remote's bytes are adopted as-is.
+// If the group does not exist, remote is cloned into the engine so
+// later mutations of remote do not affect engine state.
 func (e *Engine) Merge(group string, remote Sketch) error {
 	if remote == nil {
 		return errors.New("cardinality: nil remote sketch")
@@ -83,79 +73,74 @@ func (e *Engine) Merge(group string, remote Sketch) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	b, ok := e.groups[group]
+	sk, ok := e.groups[group]
 	if !ok {
-		bb := remote.Bytes()
-		if bb == nil {
-			return errors.New("cardinality: new-group Merge with no bytes")
-		}
-		e.groups[group] = bb
+		e.groups[group] = remote.Clone()
 		return nil
 	}
-	sk, err := e.alg.Parse(b)
-	if err != nil {
-		return fmt.Errorf("cardinality: parse %q: %w", group, err)
-	}
 	sk.Merge(remote)
-	e.groups[group] = sk.Bytes()
 	return nil
 }
 
-// Marshal serialises the full state using gob. The output is suitable
-// for snapshots and round-trips through Unmarshal on an Engine with
-// the same algorithm.
+// Marshal serialises the live sketches to a gob-encoded
+// map[string][]byte snapshot. Round-trips through Unmarshal on an
+// Engine with the same algorithm.
 func (e *Engine) Marshal() ([]byte, error) {
 	e.mu.RLock()
-	defer e.mu.RUnlock()
+	wire := make(map[string][]byte, len(e.groups))
+	for g, sk := range e.groups {
+		wire[g] = sk.Bytes()
+	}
+	e.mu.RUnlock()
+
 	var buf bytes.Buffer
-	if err := gob.NewEncoder(&buf).Encode(e.groups); err != nil {
+	if err := gob.NewEncoder(&buf).Encode(wire); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
 // Unmarshal replaces all state from data produced by Marshal.
-// The data must have been produced by an Engine with the same
-// algorithm; mismatched bytes fail to Parse and surface as an error.
+// Each group's bytes are Parsed into a fresh Sketch; a Parse
+// failure aborts before any state is replaced.
 func (e *Engine) Unmarshal(data []byte) error {
-	var m map[string][]byte
-	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&m); err != nil {
+	var wire map[string][]byte
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&wire); err != nil {
 		return err
 	}
-	for g, b := range m {
-		if _, err := e.alg.Parse(b); err != nil {
+	groups := make(map[string]Sketch, len(wire))
+	for g, b := range wire {
+		sk, err := e.alg.Parse(b)
+		if err != nil {
 			return fmt.Errorf("cardinality: parse %q: %w", g, err)
 		}
+		groups[g] = sk
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	e.groups = m
+	e.groups = groups
 	return nil
 }
 
-// Range calls fn for each group, reconstructing the sketch from
-// its bytes. If fn returns an error, Range stops and returns that error.
+// Range calls fn for each group with the live sketch. If fn returns
+// an error, Range stops and returns that error.
 func (e *Engine) Range(fn func(group string, sk Sketch) error) error {
 	if fn == nil {
 		return errors.New("cardinality: nil range function")
 	}
 	e.mu.RLock()
 	type pair struct {
-		g   string
-		buf []byte
+		g  string
+		sk Sketch
 	}
 	snap := make([]pair, 0, len(e.groups))
-	for g, b := range e.groups {
-		snap = append(snap, pair{g: g, buf: b})
+	for g, sk := range e.groups {
+		snap = append(snap, pair{g: g, sk: sk})
 	}
 	e.mu.RUnlock()
 
 	for _, p := range snap {
-		sk, err := e.alg.Parse(p.buf)
-		if err != nil {
-			return fmt.Errorf("cardinality: parse %q: %w", p.g, err)
-		}
-		if err := fn(p.g, sk); err != nil {
+		if err := fn(p.g, p.sk); err != nil {
 			return err
 		}
 	}
