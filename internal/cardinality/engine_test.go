@@ -18,23 +18,15 @@ func (mismatchedSketch) Merge(Sketch)        {}
 func (mismatchedSketch) Bytes() []byte       { return []byte{} }
 func (mismatchedSketch) Clone() Sketch       { return mismatchedSketch{} }
 
-type mismatchedAlgorithm struct{}
-
-func (mismatchedAlgorithm) Name() string { return mismatchedAlgoName }
-func (mismatchedAlgorithm) New() Sketch  { return mismatchedSketch{} }
-func (mismatchedAlgorithm) Parse([]byte) (Sketch, error) {
-	return mismatchedSketch{}, nil
-}
-
-// newTestEngine returns an Engine with the "fake" algorithm registered.
+// newTestEngine returns an Engine backed by fakeAlgorithm.
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
-	return NewEngine(newTestAlgo())
+	return NewEngine(fakeAlgorithm{})
 }
 
 func TestEngine_AddNew(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
+	if err := e.Add("g1", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	got, err := e.Cardinality("g1")
@@ -48,11 +40,10 @@ func TestEngine_AddNew(t *testing.T) {
 
 func TestEngine_AddExisting(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
+	if err := e.Add("g1", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	// Subsequent adds reuse the group's algo.
-	if err := e.Add("g1", fakeAlgoName, 2); err != nil {
+	if err := e.Add("g1", 2); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	got, err := e.Cardinality("g1")
@@ -69,13 +60,6 @@ func TestEngine_CardinalityUnknown(t *testing.T) {
 	_, err := e.Cardinality("missing")
 	if err == nil {
 		t.Fatal("expected error for unknown group, got nil")
-	}
-}
-
-func TestEngine_AddUnknownAlgo(t *testing.T) {
-	e := newTestEngine(t)
-	if err := e.Add("g1", "not-registered", 1); err == nil {
-		t.Fatal("expected error for unknown algo, got nil")
 	}
 }
 
@@ -96,19 +80,12 @@ func TestEngine_MergeNewGroup(t *testing.T) {
 	}
 }
 
-func TestEngine_MergeNewGroupUnknownAlgo(t *testing.T) {
-	e := newTestEngine(t)
-	if err := e.Merge("g-new", mismatchedSketch{}); err == nil {
-		t.Fatal("expected error for unregistered algo, got nil")
-	}
-}
-
 func TestEngine_MergeExisting(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
+	if err := e.Add("g1", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := e.Add("g1", fakeAlgoName, 2); err != nil {
+	if err := e.Add("g1", 2); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	sk := newFakeSketch()
@@ -123,12 +100,11 @@ func TestEngine_MergeExisting(t *testing.T) {
 	}
 }
 
-// TestEngine_MergeTypeMismatch verifies that a Merge into a group
-// carrying a different algo than the remote sketch returns an error,
-// not a panic.
+// TestEngine_MergeTypeMismatch verifies Merge rejects a remote whose
+// AlgoName does not match the engine's algorithm.
 func TestEngine_MergeTypeMismatch(t *testing.T) {
-	e := NewEngine(newTestAlgo(), mismatchedAlgorithm{})
-	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
+	e := newTestEngine(t)
+	if err := e.Add("g1", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	if err := e.Merge("g1", mismatchedSketch{}); err == nil {
@@ -138,13 +114,13 @@ func TestEngine_MergeTypeMismatch(t *testing.T) {
 
 func TestEngine_MarshalRoundtrip(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("alpha", fakeAlgoName, 1); err != nil {
+	if err := e.Add("alpha", 1); err != nil {
 		t.Fatalf("Add alpha: %v", err)
 	}
-	if err := e.Add("beta", fakeAlgoName, 1); err != nil {
+	if err := e.Add("beta", 1); err != nil {
 		t.Fatalf("Add beta: %v", err)
 	}
-	if err := e.Add("beta", fakeAlgoName, 2); err != nil {
+	if err := e.Add("beta", 2); err != nil {
 		t.Fatalf("Add beta: %v", err)
 	}
 
@@ -156,7 +132,7 @@ func TestEngine_MarshalRoundtrip(t *testing.T) {
 		t.Fatal("Marshal produced empty bytes")
 	}
 
-	e2 := NewEngine(newTestAlgo())
+	e2 := NewEngine(fakeAlgorithm{})
 	if err := e2.Unmarshal(data); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
@@ -178,21 +154,18 @@ func TestEngine_MarshalRoundtrip(t *testing.T) {
 
 func TestEngine_Range_VisitsAll(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("a", fakeAlgoName, 1); err != nil {
+	if err := e.Add("a", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := e.Add("b", fakeAlgoName, 1); err != nil {
+	if err := e.Add("b", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := e.Add("c", fakeAlgoName, 1); err != nil {
+	if err := e.Add("c", 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 
 	seen := map[string]uint64{}
-	err := e.Range(func(group, algo string, sk Sketch) error {
-		if algo != fakeAlgoName {
-			t.Errorf("group %s: algo = %q, want %q", group, algo, fakeAlgoName)
-		}
+	err := e.Range(func(group string, sk Sketch) error {
 		if sk == nil {
 			t.Errorf("group %s: nil sketch", group)
 		}
@@ -224,7 +197,7 @@ func TestEngine_ConcurrentAdd(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := uint64(0); i < perGoroutine; i++ {
-				if err := e.Add("shared", fakeAlgoName, base+i); err != nil {
+				if err := e.Add("shared", base+i); err != nil {
 					t.Errorf("Add: %v", err)
 					return
 				}

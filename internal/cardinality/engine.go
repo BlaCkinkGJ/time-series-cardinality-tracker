@@ -11,74 +11,45 @@ import (
 // ErrUnknownGroup is returned by Cardinality when group is not in the engine.
 var ErrUnknownGroup = errors.New("cardinality: unknown group")
 
-// ErrUnknownAlgo is returned by Add when algo is not registered on the engine.
-var ErrUnknownAlgo = errors.New("cardinality: unknown algorithm")
+// ErrAlgoMismatch is returned by Merge when the remote sketch's
+// AlgoName does not match this engine's algorithm.
+var ErrAlgoMismatch = errors.New("cardinality: sketch algo does not match engine")
 
-// ErrAlgoMismatch is returned by Merge when the remote sketch's AlgoName
-// does not match the group's existing algo.
-var ErrAlgoMismatch = errors.New("cardinality: sketch algo does not match group")
-
-// Entry holds the persisted state of one group: the algorithm name
-// and the sketch's serialised bytes. Bytes are stored opaque; the
-// engine uses the registered Algorithm to Parse them on demand.
-type Entry struct {
-	Algo  string
-	Bytes []byte
-}
-
-// Engine is a per-group cardinality store. Each group carries
-// (algo, bytes) and a sketch is reconstructed on demand via the
-// algorithm registered on this engine.
+// Engine is a per-group cardinality store for a single algorithm.
+// Each group holds the algorithm's sketch serialised to bytes; the
+// sketch is rehydrated via the registered Algorithm on demand.
 //
 // Engine is safe for concurrent use.
 type Engine struct {
 	mu     sync.RWMutex
-	groups map[string]Entry
-	algos  map[string]Algorithm
+	alg    Algorithm
+	groups map[string][]byte
 }
 
-// NewEngine returns an Engine that supports the given algorithms.
-// At least one algorithm is required to Add or Unmarshal; an empty
-// engine is useful only for inspecting pre-marshalled state via
-// Cardinality/Range when the right algo is added later.
-func NewEngine(algos ...Algorithm) *Engine {
-	m := make(map[string]Algorithm, len(algos))
-	for _, a := range algos {
-		m[a.Name()] = a
-	}
-	return &Engine{groups: make(map[string]Entry), algos: m}
+// NewEngine returns an Engine backed by alg. All groups stored in
+// this engine use alg; Merge enforces sketch.AlgoName == alg.Name().
+func NewEngine(alg Algorithm) *Engine {
+	return &Engine{alg: alg, groups: make(map[string][]byte)}
 }
 
-// Add inserts id into group, creating the group with algo if absent.
-// If the group already exists, the existing algo is reused and the
-// new algo parameter is ignored.
-func (e *Engine) Add(group, algo string, id uint64) error {
+// Add inserts id into group's sketch, creating the group if absent.
+func (e *Engine) Add(group string, id uint64) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	entry, ok := e.groups[group]
+	b, ok := e.groups[group]
 	if !ok {
-		alg, found := e.algos[algo]
-		if !found {
-			return fmt.Errorf("%w: %q", ErrUnknownAlgo, algo)
-		}
-		sk := alg.New()
+		sk := e.alg.New()
 		sk.Add(id)
-		e.groups[group] = Entry{Algo: algo, Bytes: sk.Bytes()}
+		e.groups[group] = sk.Bytes()
 		return nil
 	}
-
-	alg, found := e.algos[entry.Algo]
-	if !found {
-		return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
-	}
-	sk, err := alg.Parse(entry.Bytes)
+	sk, err := e.alg.Parse(b)
 	if err != nil {
 		return fmt.Errorf("cardinality: parse %q: %w", group, err)
 	}
 	sk.Add(id)
-	entry.Bytes = sk.Bytes()
-	e.groups[group] = entry
+	e.groups[group] = sk.Bytes()
 	return nil
 }
 
@@ -88,67 +59,51 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	entry, ok := e.groups[group]
+	b, ok := e.groups[group]
 	if !ok {
 		return 0, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
 	}
-	alg, found := e.algos[entry.Algo]
-	if !found {
-		return 0, fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
-	}
-	sk, err := alg.Parse(entry.Bytes)
+	sk, err := e.alg.Parse(b)
 	if err != nil {
 		return 0, fmt.Errorf("cardinality: parse %q: %w", group, err)
 	}
 	return sk.Cardinality(), nil
 }
 
-// Merge unions remote into group's sketch, using the group's algo.
-// If the group does not exist, the remote sketch is adopted as-is
-// under its AlgoName.
-//
-// Returns ErrAlgoMismatch if remote's AlgoName does not match the
-// group's existing algo.
+// Merge unions remote into group's sketch. Returns ErrAlgoMismatch
+// if remote's AlgoName does not match this engine's algorithm.
+// If the group does not exist, remote's bytes are adopted as-is.
 func (e *Engine) Merge(group string, remote Sketch) error {
 	if remote == nil {
 		return errors.New("cardinality: nil remote sketch")
 	}
-	remoteName := remote.AlgoName()
+	if remote.AlgoName() != e.alg.Name() {
+		return fmt.Errorf("%w: engine uses %q, got %q", ErrAlgoMismatch, e.alg.Name(), remote.AlgoName())
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	entry, ok := e.groups[group]
+	b, ok := e.groups[group]
 	if !ok {
-		if _, found := e.algos[remoteName]; !found {
-			return fmt.Errorf("%w: %q", ErrUnknownAlgo, remoteName)
-		}
-		b := remote.Bytes()
-		if b == nil {
+		bb := remote.Bytes()
+		if bb == nil {
 			return errors.New("cardinality: new-group Merge with no bytes")
 		}
-		e.groups[group] = Entry{Algo: remoteName, Bytes: b}
+		e.groups[group] = bb
 		return nil
 	}
-
-	if remoteName != entry.Algo {
-		return fmt.Errorf("%w: group %q uses %q, got %q", ErrAlgoMismatch, group, entry.Algo, remoteName)
-	}
-	alg, found := e.algos[entry.Algo]
-	if !found {
-		return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
-	}
-	sk, err := alg.Parse(entry.Bytes)
+	sk, err := e.alg.Parse(b)
 	if err != nil {
 		return fmt.Errorf("cardinality: parse %q: %w", group, err)
 	}
 	sk.Merge(remote)
-	entry.Bytes = sk.Bytes()
-	e.groups[group] = entry
+	e.groups[group] = sk.Bytes()
 	return nil
 }
 
 // Marshal serialises the full state using gob. The output is suitable
-// for snapshots and round-trips through Unmarshal.
+// for snapshots and round-trips through Unmarshal on an Engine with
+// the same algorithm.
 func (e *Engine) Marshal() ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -160,15 +115,16 @@ func (e *Engine) Marshal() ([]byte, error) {
 }
 
 // Unmarshal replaces all state from data produced by Marshal.
-// Each group's algo must be registered on the engine.
+// The data must have been produced by an Engine with the same
+// algorithm; mismatched bytes fail to Parse and surface as an error.
 func (e *Engine) Unmarshal(data []byte) error {
-	var m map[string]Entry
+	var m map[string][]byte
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&m); err != nil {
 		return err
 	}
-	for g, ent := range m {
-		if _, ok := e.algos[ent.Algo]; !ok {
-			return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, ent.Algo, g)
+	for g, b := range m {
+		if _, err := e.alg.Parse(b); err != nil {
+			return fmt.Errorf("cardinality: parse %q: %w", g, err)
 		}
 	}
 	e.mu.Lock()
@@ -178,33 +134,28 @@ func (e *Engine) Unmarshal(data []byte) error {
 }
 
 // Range calls fn for each group, reconstructing the sketch from
-// its bytes via the registered algorithm. If fn returns an error,
-// Range stops and returns that error.
-func (e *Engine) Range(fn func(group, algo string, sk Sketch) error) error {
+// its bytes. If fn returns an error, Range stops and returns that error.
+func (e *Engine) Range(fn func(group string, sk Sketch) error) error {
 	if fn == nil {
 		return errors.New("cardinality: nil range function")
 	}
 	e.mu.RLock()
 	type pair struct {
 		g   string
-		ent Entry
+		buf []byte
 	}
 	snap := make([]pair, 0, len(e.groups))
-	for g, ent := range e.groups {
-		snap = append(snap, pair{g: g, ent: ent})
+	for g, b := range e.groups {
+		snap = append(snap, pair{g: g, buf: b})
 	}
 	e.mu.RUnlock()
 
 	for _, p := range snap {
-		alg, found := e.algos[p.ent.Algo]
-		if !found {
-			return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, p.ent.Algo, p.g)
-		}
-		sk, err := alg.Parse(p.ent.Bytes)
+		sk, err := e.alg.Parse(p.buf)
 		if err != nil {
 			return fmt.Errorf("cardinality: parse %q: %w", p.g, err)
 		}
-		if err := fn(p.g, p.ent.Algo, sk); err != nil {
+		if err := fn(p.g, sk); err != nil {
 			return err
 		}
 	}

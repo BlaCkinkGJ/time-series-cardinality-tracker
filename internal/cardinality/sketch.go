@@ -29,8 +29,8 @@ type Sketch interface {
 	Clone() Sketch
 }
 
-// Algorithm is a factory for a particular sketch kind. Pass instances
-// to NewEngine to register them.
+// Algorithm is a factory for a particular sketch kind. Pass an
+// instance to NewEngine to back the engine with this algorithm.
 type Algorithm interface {
 	// Name returns the algo key (must match Sketch.AlgoName).
 	Name() string
