@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spaolacci/murmur3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -30,10 +31,17 @@ import (
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
+// hashID maps a string id to a uint64 for the opaque WAL payload.
+// ponytail: collision acceptable for HLL estimation (±few percent);
+// if lossless mapping becomes needed, switch the payload to a
+// length-prefixed bytes encoding so the original id is recoverable
+// without recomputing the sketch.
+func hashID(s string) uint64 { return murmur3.Sum64([]byte(s)) }
+
 // RaftNode is the minimal interface the server needs from the Raft layer.
 // Implemented by *raft.Node in T7; nil means standalone mode.
 type RaftNode interface {
-	ProposeAdd(ctx context.Context, group, id string) error
+	ProposeAdd(ctx context.Context, group string, id uint64) error
 }
 
 // Server implements pb.CardinalityServiceServer.
@@ -104,7 +112,7 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 	}
 
 	if s.node != nil {
-		if err := s.node.ProposeAdd(ctx, req.Group, req.Id); err != nil {
+		if err := s.node.ProposeAdd(ctx, req.Group, hashID(req.Id)); err != nil {
 			statusStr = "error"
 			metricRaftProposalsTotal.WithLabelValues("error").Inc()
 			return nil, status.Errorf(codes.Internal, "raft propose: %v", err)
@@ -135,6 +143,10 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
 
+	// BatchAdd fans out to single-id Add rather than proposing one
+	// BATCH_ADD command per batch: each id is independently routed so
+	// mixed-shard batches hit the correct owner without extra client
+	// logic, and per-id errors surface as they happen.
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
