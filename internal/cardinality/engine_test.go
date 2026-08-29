@@ -5,12 +5,31 @@ import (
 	"testing"
 )
 
+// mismatchedSketch is a Sketch whose AlgoName() differs from fakeSketch's,
+// used to verify Engine.Merge rejects cross-algo merges.
+type mismatchedSketch struct{}
+
+const mismatchedAlgoName = "mismatched"
+
+func (mismatchedSketch) AlgoName() string    { return mismatchedAlgoName }
+func (mismatchedSketch) Add(uint64)          {}
+func (mismatchedSketch) Cardinality() uint64 { return 0 }
+func (mismatchedSketch) Merge(Sketch)        {}
+func (mismatchedSketch) Bytes() []byte       { return []byte{} }
+func (mismatchedSketch) Clone() Sketch       { return mismatchedSketch{} }
+
+type mismatchedAlgorithm struct{}
+
+func (mismatchedAlgorithm) Name() string { return mismatchedAlgoName }
+func (mismatchedAlgorithm) New() Sketch  { return mismatchedSketch{} }
+func (mismatchedAlgorithm) Parse([]byte) (Sketch, error) {
+	return mismatchedSketch{}, nil
+}
+
 // newTestEngine returns an Engine with the "fake" algorithm registered.
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
-	resetRegistry()
-	Register(fakeAlgorithm{})
-	return NewEngine()
+	return NewEngine(newTestAlgo())
 }
 
 func TestEngine_AddNew(t *testing.T) {
@@ -62,8 +81,7 @@ func TestEngine_AddUnknownAlgo(t *testing.T) {
 
 func TestEngine_MergeNewGroup(t *testing.T) {
 	e := newTestEngine(t)
-	algo, _ := Get(fakeAlgoName)
-	sk := algo.New()
+	sk := newFakeSketch()
 	sk.Add(7)
 	sk.Add(8)
 	if err := e.Merge("g-new", sk); err != nil {
@@ -78,6 +96,13 @@ func TestEngine_MergeNewGroup(t *testing.T) {
 	}
 }
 
+func TestEngine_MergeNewGroupUnknownAlgo(t *testing.T) {
+	e := newTestEngine(t)
+	if err := e.Merge("g-new", mismatchedSketch{}); err == nil {
+		t.Fatal("expected error for unregistered algo, got nil")
+	}
+}
+
 func TestEngine_MergeExisting(t *testing.T) {
 	e := newTestEngine(t)
 	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
@@ -86,8 +111,7 @@ func TestEngine_MergeExisting(t *testing.T) {
 	if err := e.Add("g1", fakeAlgoName, 2); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	algo, _ := Get(fakeAlgoName)
-	sk := algo.New()
+	sk := newFakeSketch()
 	sk.Add(2)
 	sk.Add(3)
 	if err := e.Merge("g1", sk); err != nil {
@@ -103,16 +127,11 @@ func TestEngine_MergeExisting(t *testing.T) {
 // carrying a different algo than the remote sketch returns an error,
 // not a panic.
 func TestEngine_MergeTypeMismatch(t *testing.T) {
-	resetRegistry()
-	Register(fakeAlgorithm{})
-	type otherSketch struct{ Sketch }
-	other := &otherSketch{newFakeSketch()}
-
-	e := NewEngine()
+	e := NewEngine(newTestAlgo(), mismatchedAlgorithm{})
 	if err := e.Add("g1", fakeAlgoName, 1); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
-	if err := e.Merge("g1", other); err == nil {
+	if err := e.Merge("g1", mismatchedSketch{}); err == nil {
 		t.Fatal("expected error for cross-algo Merge, got nil")
 	}
 }
@@ -137,7 +156,7 @@ func TestEngine_MarshalRoundtrip(t *testing.T) {
 		t.Fatal("Marshal produced empty bytes")
 	}
 
-	e2 := NewEngine()
+	e2 := NewEngine(newTestAlgo())
 	if err := e2.Unmarshal(data); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}

@@ -1,15 +1,11 @@
 package bitmap
 
-import (
-	"testing"
-
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-)
+import "testing"
 
 func TestAlgorithm_Name(t *testing.T) {
 	a := Algorithm{}
-	if got := a.Name(); got != "bitmap" {
-		t.Fatalf("Name = %q, want bitmap", got)
+	if got := a.Name(); got != algoName {
+		t.Fatalf("Name = %q, want %q", got, algoName)
 	}
 }
 
@@ -21,6 +17,9 @@ func TestAlgorithm_New(t *testing.T) {
 	}
 	if got := sk.Cardinality(); got != 0 {
 		t.Fatalf("empty cardinality = %d, want 0", got)
+	}
+	if got := sk.AlgoName(); got != algoName {
+		t.Fatalf("AlgoName = %q, want %q", got, algoName)
 	}
 }
 
@@ -43,14 +42,7 @@ func TestAlgorithm_Parse(t *testing.T) {
 	if parsed.Cardinality() != 3 {
 		t.Fatalf("cardinality = %d, want 3", parsed.Cardinality())
 	}
-}
-
-func TestAlgorithm_Registered(t *testing.T) {
-	alg, ok := cardinality.Get("bitmap")
-	if !ok {
-		t.Fatal("bitmap algorithm not registered")
-	}
-	if alg.Name() != "bitmap" {
-		t.Fatalf("registered name = %q, want bitmap", alg.Name())
+	if parsed.AlgoName() != algoName {
+		t.Fatalf("AlgoName = %q, want %q", parsed.AlgoName(), algoName)
 	}
 }

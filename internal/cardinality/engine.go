@@ -5,18 +5,17 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 )
 
 // ErrUnknownGroup is returned by Cardinality when group is not in the engine.
 var ErrUnknownGroup = errors.New("cardinality: unknown group")
 
-// ErrUnknownAlgo is returned by Add when algo is not registered.
+// ErrUnknownAlgo is returned by Add when algo is not registered on the engine.
 var ErrUnknownAlgo = errors.New("cardinality: unknown algorithm")
 
-// ErrAlgoMismatch is returned by Merge when the remote sketch cannot
-// be applied to the group's existing algo.
+// ErrAlgoMismatch is returned by Merge when the remote sketch's AlgoName
+// does not match the group's existing algo.
 var ErrAlgoMismatch = errors.New("cardinality: sketch algo does not match group")
 
 // Entry holds the persisted state of one group: the algorithm name
@@ -29,17 +28,25 @@ type Entry struct {
 
 // Engine is a per-group cardinality store. Each group carries
 // (algo, bytes) and a sketch is reconstructed on demand via the
-// algorithm registered under that name.
+// algorithm registered on this engine.
 //
 // Engine is safe for concurrent use.
 type Engine struct {
 	mu     sync.RWMutex
 	groups map[string]Entry
+	algos  map[string]Algorithm
 }
 
-// NewEngine returns an empty Engine.
-func NewEngine() *Engine {
-	return &Engine{groups: make(map[string]Entry)}
+// NewEngine returns an Engine that supports the given algorithms.
+// At least one algorithm is required to Add or Unmarshal; an empty
+// engine is useful only for inspecting pre-marshalled state via
+// Cardinality/Range when the right algo is added later.
+func NewEngine(algos ...Algorithm) *Engine {
+	m := make(map[string]Algorithm, len(algos))
+	for _, a := range algos {
+		m[a.Name()] = a
+	}
+	return &Engine{groups: make(map[string]Entry), algos: m}
 }
 
 // Add inserts id into group, creating the group with algo if absent.
@@ -51,7 +58,7 @@ func (e *Engine) Add(group, algo string, id uint64) error {
 
 	entry, ok := e.groups[group]
 	if !ok {
-		alg, found := Get(algo)
+		alg, found := e.algos[algo]
 		if !found {
 			return fmt.Errorf("%w: %q", ErrUnknownAlgo, algo)
 		}
@@ -61,7 +68,7 @@ func (e *Engine) Add(group, algo string, id uint64) error {
 		return nil
 	}
 
-	alg, found := Get(entry.Algo)
+	alg, found := e.algos[entry.Algo]
 	if !found {
 		return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
 	}
@@ -85,7 +92,7 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	if !ok {
 		return 0, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
 	}
-	alg, found := Get(entry.Algo)
+	alg, found := e.algos[entry.Algo]
 	if !found {
 		return 0, fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
 	}
@@ -97,48 +104,42 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 }
 
 // Merge unions remote into group's sketch, using the group's algo.
-// If the group does not exist, the remote sketch is adopted and a
-// new group is created with the remote's algo (derived from the
-// factory registered under group; callers wanting to seed with a
-// pre-built sketch should use Parse-then-bytes when needed).
+// If the group does not exist, the remote sketch is adopted as-is
+// under its AlgoName.
 //
-// Returns ErrAlgoMismatch if remote cannot be applied to the
-// group's algo (e.g. a *Bitmap sketch merged into a non-bitmap group).
+// Returns ErrAlgoMismatch if remote's AlgoName does not match the
+// group's existing algo.
 func (e *Engine) Merge(group string, remote Sketch) error {
 	if remote == nil {
 		return errors.New("cardinality: nil remote sketch")
 	}
+	remoteName := remote.AlgoName()
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	entry, ok := e.groups[group]
 	if !ok {
-		// New group: infer algo from the remote's concrete type.
-		name := findAlgoName(remote)
-		if name == "" {
-			return errors.New("cardinality: cannot determine algo for new-group Merge")
+		if _, found := e.algos[remoteName]; !found {
+			return fmt.Errorf("%w: %q", ErrUnknownAlgo, remoteName)
 		}
 		b := remote.Bytes()
 		if b == nil {
 			return errors.New("cardinality: new-group Merge with no bytes")
 		}
-		e.groups[group] = Entry{Algo: name, Bytes: b}
+		e.groups[group] = Entry{Algo: remoteName, Bytes: b}
 		return nil
 	}
 
-	alg, found := Get(entry.Algo)
+	if remoteName != entry.Algo {
+		return fmt.Errorf("%w: group %q uses %q, got %q", ErrAlgoMismatch, group, entry.Algo, remoteName)
+	}
+	alg, found := e.algos[entry.Algo]
 	if !found {
 		return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, entry.Algo, group)
 	}
 	sk, err := alg.Parse(entry.Bytes)
 	if err != nil {
 		return fmt.Errorf("cardinality: parse %q: %w", group, err)
-	}
-	// Verify remote matches group's algo by type, so a *Bitmap can't
-	// be merged into a non-bitmap group (or vice versa).
-	remoteName := findAlgoName(remote)
-	if remoteName != entry.Algo {
-		return fmt.Errorf("%w: group %q uses %q, got %q", ErrAlgoMismatch, group, entry.Algo, remoteName)
 	}
 	sk.Merge(remote)
 	entry.Bytes = sk.Bytes()
@@ -159,10 +160,16 @@ func (e *Engine) Marshal() ([]byte, error) {
 }
 
 // Unmarshal replaces all state from data produced by Marshal.
+// Each group's algo must be registered on the engine.
 func (e *Engine) Unmarshal(data []byte) error {
 	var m map[string]Entry
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&m); err != nil {
 		return err
+	}
+	for g, ent := range m {
+		if _, ok := e.algos[ent.Algo]; !ok {
+			return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, ent.Algo, g)
+		}
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -189,7 +196,7 @@ func (e *Engine) Range(fn func(group, algo string, sk Sketch) error) error {
 	e.mu.RUnlock()
 
 	for _, p := range snap {
-		alg, found := Get(p.ent.Algo)
+		alg, found := e.algos[p.ent.Algo]
 		if !found {
 			return fmt.Errorf("%w: %q (group %q)", ErrUnknownAlgo, p.ent.Algo, p.g)
 		}
@@ -202,22 +209,4 @@ func (e *Engine) Range(fn func(group, algo string, sk Sketch) error) error {
 		}
 	}
 	return nil
-}
-
-// findAlgoName returns the registered algo whose New() produces a
-// sketch of the same dynamic type as remote, or "" if no match.
-// ponytail: O(N) registry scan on every Merge; for the foundation
-// slice N is tiny (1-3 algos). If a hot path emerges, cache a
-// reflect.Type -> name map.
-func findAlgoName(remote Sketch) string {
-	rt := reflect.TypeOf(remote)
-	if rt == nil {
-		return ""
-	}
-	for name, alg := range registry {
-		if reflect.TypeOf(alg.New()) == rt {
-			return name
-		}
-	}
-	return ""
 }
