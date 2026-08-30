@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package raft
+package handler
 
 import (
 	"encoding/binary"
@@ -25,9 +25,8 @@ import (
 // Payload schema: a single unsigned varint encoding the id (1–9 bytes).
 const TypeAdd = "ADD"
 
-func init() {
-	RegisterHandler(TypeAdd, applyAdd)
-}
+// RegisterAdd adds the ADD handler to r.
+func RegisterAdd(r *Registry) { r.Register(TypeAdd, applyAdd) }
 
 func applyAdd(cmd *pb.Command, apply Adder) error {
 	id, n := binary.Uvarint(cmd.Payload)

@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -29,16 +30,41 @@ import (
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
 	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/raft/handler"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
-// hllAdder adapts *hll.Engine to the raft.Adder interface. The engine's
-// Add takes a string id; the dispatcher passes a uint64. Dropped in #13
-// when the cardinality engine takes uint64 directly.
+// hllAdder adapts *hll.Engine to the handler.Adder interface so handlers
+// see a uniform engine surface regardless of which cardinality
+// implementation is plugged in.
+//
+// Two gaps force this adapter today:
+//   - *hll.Engine.Add takes a string id, but handler.Adder.Add takes uint64.
+//     We hash the id here for now. When the engine gains a uint64 Add
+//     natively, this adapter is deleted.
+//   - *hll.Engine has no Merge and only knows HLL. handler.Adder.Merge takes
+//     an algoName so the same wire format can carry HLL today and
+//     bitmap/HLL/etc. once the engine supports multiple algorithms.
+//     Until then, only "hll" passes the algo check.
+//
+// ponytail: the engine slot becomes a single handler.Adder field directly,
+//           with hllAdder removed.
 type hllAdder struct{ eng *hll.Engine }
 
 func (a hllAdder) Add(group string, id uint64) error {
 	a.eng.Add(group, strconv.FormatUint(id, 10))
+	return nil
+}
+
+func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
+	if algoName != "hll" {
+		return fmt.Errorf("%w: %q", handler.ErrUnknownAlgorithm, algoName)
+	}
+	remote, err := hll.Unmarshal(sketch)
+	if err != nil {
+		return fmt.Errorf("%w: %w", handler.ErrBadPayload, err)
+	}
+	a.eng.Merge(group, remote)
 	return nil
 }
 
@@ -57,11 +83,12 @@ type propose struct {
 
 // Node wraps etcd raft.Node with FSM application logic.
 type Node struct {
-	id      uint64
-	node    etcdraft.Node
-	storage *etcdraft.MemoryStorage
-	engine  *hll.Engine
-	store   *store.BadgerStore
+	id       uint64
+	node     etcdraft.Node
+	storage  *etcdraft.MemoryStorage
+	engine   *hll.Engine
+	store    *store.BadgerStore
+	registry *handler.Registry
 
 	proposeC chan propose
 	stopC    chan struct{}
@@ -94,6 +121,7 @@ func NewNode(id uint64, peers []Peer, engine *hll.Engine, st *store.BadgerStore)
 		storage:  storage,
 		engine:   engine,
 		store:    st,
+		registry: handler.DefaultRegistry(),
 		proposeC: make(chan propose, 128),
 		stopC:    make(chan struct{}),
 		doneC:    make(chan struct{}),
@@ -138,7 +166,7 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 			slog.Error("raft: bad entry unmarshal error", "index", e.Index, "error", err)
 			continue
 		}
-		if err := dispatch(&cmd, hllAdder{n.engine}); err != nil {
+		if err := n.registry.Dispatch(&cmd, hllAdder{n.engine}); err != nil {
 			slog.Error("raft: dispatch", "index", e.Index, "type", cmd.Type, "error", err)
 			continue
 		}
@@ -192,7 +220,7 @@ func (n *Node) maybeSnapshot() {
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
 func (n *Node) ProposeAdd(ctx context.Context, group string, id uint64) error {
 	cmd := &pb.Command{
-		Type:    TypeAdd,
+		Type:    handler.TypeAdd,
 		Group:   group,
 		Payload: binary.AppendUvarint(nil, id),
 	}
