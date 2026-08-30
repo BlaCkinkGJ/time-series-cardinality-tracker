@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strconv"
 	"sync"
@@ -35,10 +36,27 @@ import (
 // hllAdder adapts *hll.Engine to the raft.Adder interface. The engine's
 // Add takes a string id; the dispatcher passes a uint64. Dropped in #13
 // when the cardinality engine takes uint64 directly.
+//
+// Merge supports the MERGE_SKETCH handler. Only "hll" is recognised
+// today; per-group algorithm override and the cardinality.Algorithm
+// registry arrive in #13, after which this method becomes a one-liner
+// over cardinality.Engine.Merge.
 type hllAdder struct{ eng *hll.Engine }
 
 func (a hllAdder) Add(group string, id uint64) error {
 	a.eng.Add(group, strconv.FormatUint(id, 10))
+	return nil
+}
+
+func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
+	if algoName != "hll" {
+		return fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algoName)
+	}
+	remote, err := hll.Unmarshal(sketch)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBadPayload, err)
+	}
+	a.eng.Merge(group, remote)
 	return nil
 }
 
