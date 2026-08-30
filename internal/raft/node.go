@@ -16,8 +16,11 @@ package raft
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -29,6 +32,33 @@ import (
 	"github.com/yourorg/cardinality-tracker/internal/hll"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
+
+// hllAdder adapts *hll.Engine to the raft.Adder interface. The engine's
+// Add takes a string id; the dispatcher passes a uint64. Dropped in #13
+// when the cardinality engine takes uint64 directly.
+//
+// Merge supports the MERGE_SKETCH handler. Only "hll" is recognised
+// today; per-group algorithm override and the cardinality.Algorithm
+// registry arrive in #13, after which this method becomes a one-liner
+// over cardinality.Engine.Merge.
+type hllAdder struct{ eng *hll.Engine }
+
+func (a hllAdder) Add(group string, id uint64) error {
+	a.eng.Add(group, strconv.FormatUint(id, 10))
+	return nil
+}
+
+func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
+	if algoName != "hll" {
+		return fmt.Errorf("%w: %q", ErrUnknownAlgorithm, algoName)
+	}
+	remote, err := hll.Unmarshal(sketch)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrBadPayload, err)
+	}
+	a.eng.Merge(group, remote)
+	return nil
+}
 
 const snapshotThreshold = 10_000
 
@@ -126,13 +156,13 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 			slog.Error("raft: bad entry unmarshal error", "index", e.Index, "error", err)
 			continue
 		}
-		switch cmd.Type {
-		case pb.Command_ADD:
-			n.engine.Add(cmd.Group, cmd.Id)
-			if h, ok := n.engine.Get(cmd.Group); ok {
-				if err := n.store.Save(cmd.Group, h); err != nil {
-					slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
-				}
+		if err := dispatch(&cmd, hllAdder{n.engine}); err != nil {
+			slog.Error("raft: dispatch", "index", e.Index, "type", cmd.Type, "error", err)
+			continue
+		}
+		if h, ok := n.engine.Get(cmd.Group); ok {
+			if err := n.store.Save(cmd.Group, h); err != nil {
+				slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
 			}
 		}
 		n.mu.Lock()
@@ -178,8 +208,12 @@ func (n *Node) maybeSnapshot() {
 }
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
-func (n *Node) ProposeAdd(ctx context.Context, group, id string) error {
-	cmd := &pb.Command{Type: pb.Command_ADD, Group: group, Id: id}
+func (n *Node) ProposeAdd(ctx context.Context, group string, id uint64) error {
+	cmd := &pb.Command{
+		Type:    TypeAdd,
+		Group:   group,
+		Payload: binary.AppendUvarint(nil, id),
+	}
 	data, err := proto.Marshal(cmd)
 	if err != nil {
 		return err

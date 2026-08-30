@@ -86,7 +86,7 @@ Cardinality estimation is powered by a HyperLogLog++ implementation:
 1. Request arrives at `node_X`.
 2. `node_X` hashes `group` and finds the owning node `node_Y`.
 3. If `node_X == node_Y`:
-   - Proposes `Command_ADD` containing ID to the local Raft group.
+   - Proposes a `Command { type: "ADD", group, payload: varint(id) }` to the local Raft group.
    - Raft appends log and advances state machine.
    - State machine updates in-memory HLL sketch registers.
    - Updated sketch registers are committed synchronously to BadgerDB.
