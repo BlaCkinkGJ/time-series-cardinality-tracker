@@ -62,6 +62,18 @@ func (e *Engine) Set(seriesID string, h *HLL) {
 	e.hlls[seriesID] = h
 }
 
+// Merge unions remote into the HLL for seriesID, creating the entry
+// from remote if absent. Used by the raft MERGE_SKETCH handler.
+func (e *Engine) Merge(seriesID string, remote *HLL) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if h, ok := e.hlls[seriesID]; ok {
+		h.Merge(remote)
+		return
+	}
+	e.hlls[seriesID] = remote
+}
+
 // Range calls fn for every series. fn must not call Engine methods (deadlock).
 func (e *Engine) Range(fn func(id string, h *HLL)) {
 	e.mu.RLock()
