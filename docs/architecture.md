@@ -64,18 +64,18 @@ Each node exposes both a REST gateway (`grpc-gateway`) and a gRPC server:
 ### 2.3 Raft Durability Layer (`internal/raft`)
 Although nodes run independently from a sharding perspective, each **shard** utilizes a Raft group (`go.etcd.io/etcd/raft/v3`) for its own local sharded store:
 - **WAL Durability**: Write proposals are processed sequentially through the Raft log.
-- **FSM Application**: Once committed by Raft, entries are applied to the in-memory HLL engine and written to BadgerDB.
-- **Log Compaction & Snapshots**: Every 10,000 log entries, the FSM state (serialised maps of HLL sketch registers) is dumped as a Raft snapshot. The memory storage is then compacted, discarding old log entries.
+- **FSM Application**: Once committed by Raft, entries are applied to the in-memory cardinality engine and written to BadgerDB.
+- **Log Compaction & Snapshots**: Every 10,000 log entries, the FSM state (serialised per-group sketch bytes) is dumped as a Raft snapshot. The memory storage is then compacted, discarding old log entries.
 
-### 2.4 HyperLogLog++ Engine (`internal/hll`)
-Cardinality estimation is powered by a HyperLogLog++ implementation:
-- **Precision**: $p=14$ (giving $2^{14} = 16,384$ registers). This guarantees a standard error of $\le 1.04/\sqrt{m} \approx 0.81\%$, which comfortably complies with the user requirement of $<3\%$.
-- **Storage Profile**: Fixed-size byte slices of $16,384$ bytes represent the register states.
-- **Thread Safety**: The `Engine` struct wraps a standard map (`map[string]*HLL`) with a RWMutex to allow fast concurrent reads and lock-guaranteed writes.
+### 2.4 Pluggable Cardinality Engine (`internal/cardinality`)
+Cardinality estimation is algorithm-agnostic: `cardinality.NewEngine(alg)` fixes one algorithm for every group it holds, and consumers (raft FSM, gRPC server) never reference a concrete implementation.
+- **Implementations**: `internal/cardinality/hll` — HyperLogLog++ with precision $p=14$ (giving $2^{14} = 16,384$ registers, standard error $\le 1.04/\sqrt{m} \approx 0.81\%$, fixed $\sim16$ KB per group); `internal/cardinality/bitmap` — exact Roaring64 bitmap.
+- **Interface**: `Sketch` (`Add`/`Cardinality`/`Merge`/`Bytes`/`Clone`/`AlgoName`) plus the `Algorithm` factory (`Name`/`New`/`Parse`).
+- **Thread Safety**: The `Engine` struct wraps a standard map (`map[string]Sketch`) with a RWMutex to allow fast concurrent reads and lock-guaranteed writes.
 
 ### 2.5 Storage Layer (`internal/store`)
 - **Engine**: BadgerDB v4, a fast Log-Structured Merge (LSM) key-value database written in Go.
-- **Key Layout**: Binary keys prefixing the group (`hll/<group>`).
+- **Key Layout**: Binary keys prefixing the group (`sketch/<group>`). Values are opaque serialised sketches; parsing them is the engine's job, not the store's.
 - **Disk Sync**: Writes bypass CGO to avoid native dyld errors on macOS, providing a zero-dependency static build.
 
 ---
@@ -98,7 +98,7 @@ Cardinality estimation is powered by a HyperLogLog++ implementation:
 1. Query arrives at `node_X`.
 2. `node_X` hashes `group` to find owner `node_Y`.
 3. If `node_X == node_Y`:
-   - Node queries the local `hll.Engine` map in-memory.
+   - Node queries the local `cardinality.Engine` map in-memory.
    - Returns the estimated cardinality estimate instantly.
 4. If `node_X != node_Y`:
    - `node_X` queries `node_Y` via gRPC.
