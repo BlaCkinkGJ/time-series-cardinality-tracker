@@ -45,10 +45,17 @@ import (
 //   - *hll.Engine has no Merge and only knows HLL. handler.Adder.Merge takes
 //     an algoName so the same wire format can carry HLL today and
 //     bitmap/HLL/etc. once the engine supports multiple algorithms.
-//     Until then, only "hll" passes the algo check.
+//     Until then, only hll.AlgoName passes the algo check.
+//
+// Note: the algoName check is a wire-boundary type guard, not algorithm
+// dispatch — payloads are opaque bytes, so it is the only place the HLL
+// claim is enforced before hll.Unmarshal. No producer emits MERGE_SKETCH
+// yet, so the branch is unreachable in production. Once cardinality.Engine
+// backs this slot, its Merge becomes the single authority and this guard
+// plus handler.ErrUnknownAlgorithm collapse into cardinality.ErrAlgoMismatch.
 //
 // ponytail: the engine slot becomes a single handler.Adder field directly,
-//           with hllAdder removed.
+// with hllAdder removed.
 type hllAdder struct{ eng *hll.Engine }
 
 func (a hllAdder) Add(group string, id uint64) error {
@@ -57,7 +64,7 @@ func (a hllAdder) Add(group string, id uint64) error {
 }
 
 func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
-	if algoName != "hll" {
+	if algoName != hll.AlgoName {
 		return fmt.Errorf("%w: %q", handler.ErrUnknownAlgorithm, algoName)
 	}
 	remote, err := hll.Unmarshal(sketch)
@@ -94,9 +101,9 @@ type Node struct {
 	stopC    chan struct{}
 	doneC    chan struct{}
 
-	mu          sync.Mutex
-	appliedIdx  uint64
-	snapCount   uint64
+	mu         sync.Mutex
+	appliedIdx uint64
+	snapCount  uint64
 }
 
 // NewNode creates a Raft node. Single-node cluster when peers=[]Peer{{ID: id}}.

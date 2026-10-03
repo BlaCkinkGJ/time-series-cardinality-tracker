@@ -16,6 +16,11 @@ package hll
 
 import "sync"
 
+// AlgoName is the registry/wire key identifying HLL sketches. It is
+// the value carried in MERGE_SKETCH payloads and, once hll implements
+// cardinality.Algorithm, the value returned by Name.
+const AlgoName = "hll"
+
 // Engine is a thread-safe map of series ID to HLL sketches.
 type Engine struct {
 	mu   sync.RWMutex

@@ -395,8 +395,8 @@ func TestApplyMergeSketch_AlgoLenExceeds(t *testing.T) {
 	RegisterMerge(r)
 	a := newFakeAdder()
 	var buf []byte
-	buf = binary.AppendUvarint(buf, 100)            // claim 100-byte algo
-	buf = append(buf, []byte("short")...)           // but only 5 bytes follow
+	buf = binary.AppendUvarint(buf, 100)  // claim 100-byte algo
+	buf = append(buf, []byte("short")...) // but only 5 bytes follow
 	cmd := &pb.Command{Type: TypeMergeSketch, Group: "g", Payload: buf}
 	err := r.Dispatch(cmd, a)
 	if !errors.Is(err, ErrBadPayload) {
