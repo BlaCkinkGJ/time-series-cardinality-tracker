@@ -26,7 +26,8 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
 	"github.com/yourorg/cardinality-tracker/internal/server"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
@@ -43,7 +44,7 @@ func newTestServer(t *testing.T) (pb.CardinalityServiceClient, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 	srv := server.New(eng, st, nil, nil, "") // nil raft → standalone
 
 	lis := bufconn.Listen(bufSize)

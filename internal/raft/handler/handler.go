@@ -31,24 +31,18 @@ var (
 	ErrUnknownCommand = errors.New("raft: unknown command type")
 	// ErrBadPayload is returned when a handler cannot decode cmd.Payload.
 	ErrBadPayload = errors.New("raft: bad payload")
-	// ErrUnknownAlgorithm is returned when a MERGE_SKETCH references an
-	// algorithm name the engine doesn't know how to parse.
-	// ponytail: only "hll" is registered today. New algorithms (e.g.
-	// "bitmap") are added by extending Adder.Merge's accepted algo names;
-	// no handler change required.
-	ErrUnknownAlgorithm = errors.New("raft: unknown algorithm")
 )
 
 // Adder is the minimal engine surface a handler needs, keeping handlers
-// engine-agnostic. Only hllAdder implements it today; *cardinality.Engine
-// replaces it once the engine takes uint64 ids and supports multiple algorithms.
+// engine-agnostic. *cardinality.Engine satisfies it directly.
 type Adder interface {
 	// Add inserts id into group's sketch, creating the group if absent.
 	Add(group string, id uint64) error
-	// Merge unions sketch (opaque bytes, parsed by Adder using algoName)
-	// into group's existing sketch; if the group does not exist, the
-	// engine is expected to seed it from the provided sketch.
-	Merge(group string, algoName string, sketch []byte) error
+	// MergeBytes parses sketch (opaque bytes) with algoName and unions
+	// the result into group; if the group does not exist, the engine
+	// seeds it from the provided sketch. An algoName the engine does not
+	// know returns an error (cardinality.ErrAlgoMismatch).
+	MergeBytes(group, algoName string, sketch []byte) error
 }
 
 // Handler applies a single command type to an Adder.

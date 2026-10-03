@@ -59,6 +59,19 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	return sk.Cardinality(), nil
 }
 
+// Bytes returns the serialised sketch for group, or ErrUnknownGroup.
+// Used by persistence (BadgerStore.Save) so the store stays
+// algorithm-agnostic.
+func (e *Engine) Bytes(group string) ([]byte, error) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	sk, ok := e.groups[group]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
+	}
+	return sk.Bytes(), nil
+}
+
 // Merge unions remote into group's sketch. Returns ErrAlgoMismatch
 // if remote's AlgoName does not match this engine's algorithm.
 // If the group does not exist, remote is cloned into the engine so
@@ -80,6 +93,21 @@ func (e *Engine) Merge(group string, remote Sketch) error {
 	}
 	sk.Merge(remote)
 	return nil
+}
+
+// MergeBytes parses b with the engine's algorithm and unions the
+// result into group. algoName must match the engine's algorithm;
+// a mismatch (config drift between nodes) returns ErrAlgoMismatch.
+// This is the wire-facing entry point used by the MERGE_SKETCH handler.
+func (e *Engine) MergeBytes(group, algoName string, b []byte) error {
+	if algoName != e.alg.Name() {
+		return fmt.Errorf("%w: engine uses %q, got %q", ErrAlgoMismatch, e.alg.Name(), algoName)
+	}
+	remote, err := e.alg.Parse(b)
+	if err != nil {
+		return fmt.Errorf("cardinality: parse %q: %w", group, err)
+	}
+	return e.Merge(group, remote)
 }
 
 // Marshal serialises the live sketches to a gob-encoded

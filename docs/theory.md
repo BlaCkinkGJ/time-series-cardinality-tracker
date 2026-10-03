@@ -35,6 +35,24 @@ Because we use a fixed precision of $p=14$, each register requires only 1 byte (
 $$\text{Memory usage per series} = 16,384 \text{ bytes} \approx 16 \text{ KB}$$
 This allows a single server to track **100,000 distinct metrics** using only **~1.6 GB** of memory!
 
+### 1.5 Pluggable Algorithms: Choosing per Engine
+
+The engine is algorithm-agnostic: `cardinality.NewEngine(alg)` fixes one
+algorithm for every group it stores. Two implementations ship today.
+
+| Algorithm | Backing store | Cardinality | Memory per group | Best for |
+|-----------|---------------|-------------|------------------|----------|
+| `bitmap` | Roaring64 bitmap | **exact** | variable — sparse: ~8 bytes per distinct id; dense: ~1 bit per id in range | Exact counts, small/medium id universes |
+| `hll` | HyperLogLog++ (p=14) | approximate, ~0.81% std. error | **fixed** ~16 KB | Huge id spaces, memory-bound cardinality |
+
+Tradeoff in one line: Roaring is exact and cheap on sparse data but grows
+with the number of distinct ids; HLL is bounded at 16 KB but only estimates.
+
+HLL sketch bytes are wire- and disk-compatible across the migration to the
+pluggable engine: ids are hashed in their decimal form
+(`murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))`), so pre-existing
+persisted sketches keep their counts.
+
 ---
 
 ## 2. Consistent Hashing: Even Distribution
