@@ -50,7 +50,7 @@ func TestSingleNodePropose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if err := node.ProposeAdd(ctx, "ts-x", "hello"); err != nil {
+	if err := node.ProposeAdd(ctx, "ts-x", 42); err != nil {
 		t.Fatalf("ProposeAdd: %v", err)
 	}
 

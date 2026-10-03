@@ -16,8 +16,11 @@ package raft
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,8 +30,39 @@ import (
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
 	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/raft/handler"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
+
+// hllAdder adapts *hll.Engine to handler.Adder. Temporary: it goes away once
+// the engine takes uint64 ids natively and supports more than HLL.
+//
+//   - Add hashes the uint64 id back to a string.
+//   - Merge accepts only hll.AlgoName — a wire-boundary type guard, not
+//     algorithm dispatch (payloads are opaque). No producer emits MERGE_SKETCH
+//     yet. Once cardinality.Engine backs this slot, its Merge is the single
+//     authority and this guard plus handler.ErrUnknownAlgorithm fold into
+//     cardinality.ErrAlgoMismatch.
+//
+// ponytail: the engine slot becomes a direct handler.Adder field; hllAdder is deleted.
+type hllAdder struct{ eng *hll.Engine }
+
+func (a hllAdder) Add(group string, id uint64) error {
+	a.eng.Add(group, strconv.FormatUint(id, 10))
+	return nil
+}
+
+func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
+	if algoName != hll.AlgoName {
+		return fmt.Errorf("%w: %q", handler.ErrUnknownAlgorithm, algoName)
+	}
+	remote, err := hll.Unmarshal(sketch)
+	if err != nil {
+		return fmt.Errorf("%w: %w", handler.ErrBadPayload, err)
+	}
+	a.eng.Merge(group, remote)
+	return nil
+}
 
 const snapshotThreshold = 10_000
 
@@ -45,19 +79,20 @@ type propose struct {
 
 // Node wraps etcd raft.Node with FSM application logic.
 type Node struct {
-	id      uint64
-	node    etcdraft.Node
-	storage *etcdraft.MemoryStorage
-	engine  *hll.Engine
-	store   *store.BadgerStore
+	id       uint64
+	node     etcdraft.Node
+	storage  *etcdraft.MemoryStorage
+	engine   *hll.Engine
+	store    *store.BadgerStore
+	registry *handler.Registry
 
 	proposeC chan propose
 	stopC    chan struct{}
 	doneC    chan struct{}
 
-	mu          sync.Mutex
-	appliedIdx  uint64
-	snapCount   uint64
+	mu         sync.Mutex
+	appliedIdx uint64
+	snapCount  uint64
 }
 
 // NewNode creates a Raft node. Single-node cluster when peers=[]Peer{{ID: id}}.
@@ -82,6 +117,7 @@ func NewNode(id uint64, peers []Peer, engine *hll.Engine, st *store.BadgerStore)
 		storage:  storage,
 		engine:   engine,
 		store:    st,
+		registry: handler.DefaultRegistry(),
 		proposeC: make(chan propose, 128),
 		stopC:    make(chan struct{}),
 		doneC:    make(chan struct{}),
@@ -126,13 +162,13 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 			slog.Error("raft: bad entry unmarshal error", "index", e.Index, "error", err)
 			continue
 		}
-		switch cmd.Type {
-		case pb.Command_ADD:
-			n.engine.Add(cmd.Group, cmd.Id)
-			if h, ok := n.engine.Get(cmd.Group); ok {
-				if err := n.store.Save(cmd.Group, h); err != nil {
-					slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
-				}
+		if err := n.registry.Dispatch(&cmd, hllAdder{n.engine}); err != nil {
+			slog.Error("raft: dispatch", "index", e.Index, "type", cmd.Type, "error", err)
+			continue
+		}
+		if h, ok := n.engine.Get(cmd.Group); ok {
+			if err := n.store.Save(cmd.Group, h); err != nil {
+				slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
 			}
 		}
 		n.mu.Lock()
@@ -178,8 +214,12 @@ func (n *Node) maybeSnapshot() {
 }
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
-func (n *Node) ProposeAdd(ctx context.Context, group, id string) error {
-	cmd := &pb.Command{Type: pb.Command_ADD, Group: group, Id: id}
+func (n *Node) ProposeAdd(ctx context.Context, group string, id uint64) error {
+	cmd := &pb.Command{
+		Type:    handler.TypeAdd,
+		Group:   group,
+		Payload: binary.AppendUvarint(nil, id),
+	}
 	data, err := proto.Marshal(cmd)
 	if err != nil {
 		return err

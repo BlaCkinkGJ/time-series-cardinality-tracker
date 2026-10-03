@@ -16,6 +16,10 @@ package hll
 
 import "sync"
 
+// AlgoName is the wire/registry key for HLL sketches: the value carried in
+// MERGE_SKETCH payloads, and Name() once hll implements cardinality.Algorithm.
+const AlgoName = "hll"
+
 // Engine is a thread-safe map of series ID to HLL sketches.
 type Engine struct {
 	mu   sync.RWMutex
@@ -60,6 +64,18 @@ func (e *Engine) Set(seriesID string, h *HLL) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.hlls[seriesID] = h
+}
+
+// Merge unions remote into the HLL for seriesID, creating the entry
+// from remote if absent. Used by the raft MERGE_SKETCH handler.
+func (e *Engine) Merge(seriesID string, remote *HLL) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if h, ok := e.hlls[seriesID]; ok {
+		h.Merge(remote)
+		return
+	}
+	e.hlls[seriesID] = remote
 }
 
 // Range calls fn for every series. fn must not call Engine methods (deadlock).
