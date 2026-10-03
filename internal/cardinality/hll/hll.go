@@ -57,11 +57,12 @@ type sketch struct {
 // AlgoName returns the algo key.
 func (s *sketch) AlgoName() string { return algoName }
 
-// Add inserts id. The id is hashed in its decimal form to stay
-// byte-compatible with pre-migration state: sketches persisted in
-// Badger and raft snapshots were produced by
-// murmur3.Sum64([]byte(strconv.FormatUint(id, 10))). Hashing the raw
-// 8 bytes instead would silently change existing cardinalities.
+// Add inserts id. The id is hashed in its decimal form, matching the
+// pre-migration raft path (murmur3.Sum64([]byte(strconv.FormatUint(id,10)))),
+// so sketches persisted by that path keep their counts. The old
+// standalone path hashed the raw string id instead, so it is NOT
+// byte-compatible; like the snapshot format, it is covered by the
+// no-compat-shim decision (no production data).
 func (s *sketch) Add(id uint64) {
 	hash := murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))
 	idx := hash >> (64 - precision)

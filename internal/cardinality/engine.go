@@ -59,12 +59,15 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	return sk.Cardinality(), nil
 }
 
-// AddAndBytes inserts id into group and returns the serialised sketch,
-// both under a single write lock. Use this instead of Add followed by
-// Bytes when the bytes are about to be persisted: the split form can
-// interleave with a concurrent Add and write a stale sketch, silently
-// dropping the newer id.
-func (e *Engine) AddAndBytes(group string, id uint64) ([]byte, error) {
+// AddAndPersist inserts id into group and, still holding the write lock,
+// passes the freshly serialised sketch to save. Insert and persist are
+// one atomic step: a concurrent add cannot have its newer snapshot
+// overwritten by an older one, so every acknowledged add is in the
+// persisted sketch.
+//
+// ponytail: save runs under the engine-wide write lock, serialising all
+// standalone writes. Per-group locks if standalone write throughput matters.
+func (e *Engine) AddAndPersist(group string, id uint64, save func([]byte) error) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -74,13 +77,13 @@ func (e *Engine) AddAndBytes(group string, id uint64) ([]byte, error) {
 		e.groups[group] = sk
 	}
 	sk.Add(id)
-	return sk.Bytes(), nil
+	return save(sk.Bytes())
 }
 
 // Bytes returns the serialised sketch for group, or ErrUnknownGroup.
 // It is a point-in-time read: a concurrent Add may land immediately
-// after it returns, so do not use Add+Bytes when persisting (use
-// AddAndBytes). Used by the raft apply path, which is single-goroutine.
+// after it returns. Used only by the raft apply path, which is the sole
+// writer in that mode and therefore cannot observe a reordering.
 func (e *Engine) Bytes(group string) ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -166,30 +169,5 @@ func (e *Engine) Unmarshal(data []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.groups = groups
-	return nil
-}
-
-// Range calls fn for each group with the live sketch. If fn returns
-// an error, Range stops and returns that error.
-func (e *Engine) Range(fn func(group string, sk Sketch) error) error {
-	if fn == nil {
-		return errors.New("cardinality: nil range function")
-	}
-	e.mu.RLock()
-	type pair struct {
-		g  string
-		sk Sketch
-	}
-	snap := make([]pair, 0, len(e.groups))
-	for g, sk := range e.groups {
-		snap = append(snap, pair{g: g, sk: sk})
-	}
-	e.mu.RUnlock()
-
-	for _, p := range snap {
-		if err := fn(p.g, p.sk); err != nil {
-			return err
-		}
-	}
 	return nil
 }

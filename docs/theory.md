@@ -48,10 +48,7 @@ algorithm for every group it stores. Two implementations ship today.
 Tradeoff in one line: Roaring is exact and cheap on sparse data but grows
 with the number of distinct ids; HLL is bounded at 16 KB but only estimates.
 
-HLL sketch bytes are wire- and disk-compatible across the migration to the
-pluggable engine: ids are hashed in their decimal form
-(`murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))`), so pre-existing
-persisted sketches keep their counts.
+HLL sketch bytes written by the pre-migration **raft** path stay valid: ids are hashed in their decimal form (`murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))`), which is what that path did. The old standalone path hashed the raw string id instead, so its persisted sketches are not byte-compatible — like the snapshot format, it is covered by the no-compat-shim decision (no production data).
 
 ---
 
