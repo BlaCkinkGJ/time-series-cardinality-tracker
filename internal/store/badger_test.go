@@ -15,12 +15,11 @@
 package store_test
 
 import (
+	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"testing"
 
-	"github.com/yourorg/cardinality-tracker/internal/hll"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
@@ -41,22 +40,18 @@ func TestSaveLoad(t *testing.T) {
 	s, cleanup := tempStore(t)
 	defer cleanup()
 
-	h := hll.New()
-	for i := 0; i < 1000; i++ {
-		h.Add([]byte(fmt.Sprintf("v%d", i)))
-	}
-	est := h.Estimate()
+	payload := []byte("opaque-sketch-bytes\x00\x01\x02")
 
-	if err := s.Save("ts-001", h); err != nil {
+	if err := s.Save("ts-001", payload); err != nil {
 		t.Fatal(err)
 	}
 
-	h2, err := s.Load("ts-001")
+	got, err := s.Load("ts-001")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h2.Estimate() != est {
-		t.Fatalf("load estimate %d != saved %d", h2.Estimate(), est)
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("loaded %v != saved %v", got, payload)
 	}
 }
 

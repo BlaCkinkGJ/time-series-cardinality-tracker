@@ -16,12 +16,12 @@ package raft_test
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
 	"github.com/yourorg/cardinality-tracker/internal/raft"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
@@ -39,7 +39,7 @@ func TestSingleNodePropose(t *testing.T) {
 	}
 	defer st.Close()
 
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 	node := raft.NewNode(1, []raft.Peer{{ID: 1}}, eng, st)
 	go node.Run()
 	defer node.Stop()
@@ -56,28 +56,41 @@ func TestSingleNodePropose(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
-	if est := eng.Estimate("ts-x"); est == 0 {
-		t.Fatal("expected non-zero estimate after propose")
+	card, err := eng.Cardinality("ts-x")
+	if err != nil {
+		t.Fatalf("Cardinality: %v", err)
+	}
+	if card == 0 {
+		t.Fatal("expected non-zero cardinality after propose")
 	}
 }
 
 func TestSnapshotRoundTrip(t *testing.T) {
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 	for i := 0; i < 5000; i++ {
-		eng.Add("ts-snap", fmt.Sprintf("v%d", i))
+		if err := eng.Add("ts-snap", uint64(i)); err != nil {
+			t.Fatal(err)
+		}
 	}
-	before := eng.Estimate("ts-snap")
-
-	snap, err := raft.SnapshotEngine(eng)
+	before, err := eng.Cardinality("ts-snap")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	eng2 := hll.NewEngine()
-	if err := raft.RestoreEngine(eng2, snap); err != nil {
+	snap, err := eng.Marshal()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if eng2.Estimate("ts-snap") != before {
-		t.Fatalf("snapshot restore: before=%d after=%d", before, eng2.Estimate("ts-snap"))
+
+	eng2 := cardinality.NewEngine(hll.Algorithm{})
+	if err := eng2.Unmarshal(snap); err != nil {
+		t.Fatal(err)
+	}
+	after, err := eng2.Cardinality("ts-snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("snapshot restore: before=%d after=%d", before, after)
 	}
 }

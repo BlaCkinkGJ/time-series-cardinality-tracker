@@ -34,7 +34,8 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
 	"github.com/yourorg/cardinality-tracker/internal/raft"
 	"github.com/yourorg/cardinality-tracker/internal/router"
 	"github.com/yourorg/cardinality-tracker/internal/server"
@@ -65,7 +66,7 @@ func run() error {
 	}
 	defer func() { _ = st.Close() }()
 
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 
 	var ring *router.Ring
 	var selfAddr string

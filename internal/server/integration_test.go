@@ -28,7 +28,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
 	"github.com/yourorg/cardinality-tracker/internal/raft"
 	"github.com/yourorg/cardinality-tracker/internal/server"
 	"github.com/yourorg/cardinality-tracker/internal/store"
@@ -47,7 +48,7 @@ func TestIntegration_AddQuery_WithRaft(t *testing.T) {
 	}
 	defer st.Close()
 
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 
 	node := raft.NewNode(1, []raft.Peer{{ID: 1}}, eng, st)
 	go node.Run()

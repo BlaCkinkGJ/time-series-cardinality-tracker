@@ -27,12 +27,9 @@ import (
 //	[varint algo_len] [algo_bytes:algo_len] [sketch_payload:rest]
 //
 // The handler decodes the prefix and forwards (algoName, sketchBytes)
-// to Adder.Merge, which owns algorithm-specific parsing and seeding or
-// merging of the local group sketch.
-//
-// Today only "hll" is a recognized algo name; anything else returns
-// ErrUnknownAlgorithm. New algorithms land by extending Adder.Merge to
-// accept them — no handler change required.
+// to Adder.MergeBytes, which owns algorithm-specific parsing and seeding
+// or merging of the local group sketch. The engine rejects an algoName
+// it does not know with cardinality.ErrAlgoMismatch.
 const TypeMergeSketch = "MERGE_SKETCH"
 
 // RegisterMerge adds the MERGE_SKETCH handler to r.
@@ -50,5 +47,5 @@ func applyMergeSketch(cmd *pb.Command, apply Adder) error {
 	}
 	algoName := string(buf[:algoLen])
 	sketch := buf[algoLen:]
-	return apply.Merge(cmd.Group, algoName, sketch)
+	return apply.MergeBytes(cmd.Group, algoName, sketch)
 }

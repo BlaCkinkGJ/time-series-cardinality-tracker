@@ -4,33 +4,33 @@
 
 **Time-Series Cardinality Tracker** — A sharded time-series cardinality tracker implemented in Go.
 
-Estimates the number of unique values (cardinality) in time-series data using HyperLogLog++ (HLL++) sketches, with distributed coordination via Raft consensus.
+Estimates the number of unique values (cardinality) in time-series data using pluggable cardinality sketches (HyperLogLog++, Roaring64 bitmap), with distributed coordination via Raft consensus.
 
 ## Tech Stack
 
 - **Go 1.21.3**
-- **HyperLogLog++** — Cardinality estimation engine (precision p=14)
+- **Pluggable cardinality engine** — `internal/cardinality` with HyperLogLog++ (precision p=14) and Roaring64 bitmap backends
 - **etcd Raft v3** — FSM log compaction and snapshotting
-- **BadgerDB v4** — LSM-tree disk persistence for HLL sketches
+- **BadgerDB v4** — LSM-tree disk persistence for serialised sketches
 - **gRPC + grpc-gateway** — Internal communication and HTTP REST API
 - **murmur3 + Consistent Hashing** — Shard routing and request forwarding
 
 ## Architecture
 
 ```
-HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers) → HLL Engine + BadgerDB
+HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers) → Cardinality Engine + BadgerDB
 ```
 
 - **Shard Routing**: Each `group` maps to a shard. The shard's Raft group is replicated across 3+ nodes.
 - **Request Forwarding**: The consistent hash resolves the shard. Requests are routed to the leader node.
-- **Local Durability**: Each shard has a Raft group. Proposals are written to the Raft log, applied to the in-memory HLL engine, and committed to BadgerDB on every replica.
+- **Local Durability**: Each shard has a Raft group. Proposals are written to the Raft log, applied to the in-memory cardinality engine, and committed to BadgerDB on every replica.
 
 ## Project Structure
 
 ```
 ├── cmd/server/          # Entry point (main.go)
 ├── internal/
-│   ├── hll/             # HyperLogLog++ engine
+│   ├── cardinality/     # Pluggable cardinality engine (hll, bitmap)
 │   ├── raft/            # Raft consensus (FSM, node management)
 │   ├── router/          # Consistent hash shard routing
 │   ├── server/          # gRPC server, metrics, integration tests
@@ -125,7 +125,7 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 
 - HLL++ with p=14 gives ~16K registers (16,384) — good balance of accuracy and memory
 - Raft provides strong consistency for cardinality updates across replicas
-- BadgerDB persists HLL sketches to survive restarts without losing state
+- BadgerDB persists serialised sketches to survive restarts without losing state
 - Consistent hashing distributes load evenly across shards with minimal reshuffling on topology changes
 - Each shard is independently managed by its own Raft group
 

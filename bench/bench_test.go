@@ -27,7 +27,8 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
 	"github.com/yourorg/cardinality-tracker/internal/raft"
 	"github.com/yourorg/cardinality-tracker/internal/router"
 	"github.com/yourorg/cardinality-tracker/internal/server"
@@ -35,47 +36,43 @@ import (
 )
 
 func BenchmarkHLL_Add(b *testing.B) {
-	h := hll.New()
-	val := []byte("benchmark-value")
+	sk := hll.Algorithm{}.New()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		h.Add(val)
+		sk.Add(uint64(i))
 	}
 }
 
 func BenchmarkHLL_Estimate(b *testing.B) {
-	h := hll.New()
+	sk := hll.Algorithm{}.New()
 	for i := 0; i < 100000; i++ {
-		h.Add([]byte(fmt.Sprintf("v%d", i)))
+		sk.Add(uint64(i))
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		h.Estimate()
+		sk.Cardinality()
 	}
 }
 
 func BenchmarkEngine_Add_Parallel(b *testing.B) {
-	eng := hll.NewEngine()
+	eng := cardinality.NewEngine(hll.Algorithm{})
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			eng.Add("ts-bench", fmt.Sprintf("val-%d", i))
+			_ = eng.Add("ts-bench", uint64(i))
 			i++
 		}
 	})
 }
 
 func BenchmarkHLL_Marshal(b *testing.B) {
-	h := hll.New()
+	sk := hll.Algorithm{}.New()
 	for i := 0; i < 100000; i++ {
-		h.Add([]byte(fmt.Sprintf("v%d", i)))
+		sk.Add(uint64(i))
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := h.Marshal()
-		if err != nil {
-			b.Fatal(err)
-		}
+		_ = sk.Bytes()
 	}
 }
 
@@ -118,7 +115,7 @@ func BenchmarkDistributed_Add_Forward(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		eng := hll.NewEngine()
+		eng := cardinality.NewEngine(hll.Algorithm{})
 		nodeID := uint64(i + 1)
 		node := raft.NewNode(nodeID, []raft.Peer{{ID: nodeID}}, eng, st)
 		go node.Run()
@@ -233,7 +230,7 @@ func BenchmarkDistributed_Add_Forward_Latency5ms(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		eng := hll.NewEngine()
+		eng := cardinality.NewEngine(hll.Algorithm{})
 		nodeID := uint64(i + 1)
 		node := raft.NewNode(nodeID, []raft.Peer{{ID: nodeID}}, eng, st)
 		go node.Run()
