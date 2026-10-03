@@ -128,22 +128,25 @@ func TestSketch_ParseCorrupt(t *testing.T) {
 }
 
 // TestSketch_Clone_Deep verifies Clone returns an independent copy.
+// Asserted at the register level rather than via Cardinality: an HLL
+// estimate for 3 ids can coincide by chance, the bytes cannot.
 func TestSketch_Clone_Deep(t *testing.T) {
 	alg := Algorithm{}
 	a := alg.New()
 	a.Add(1)
 	a.Add(2)
 	a.Add(3)
+	before := a.Bytes()
 
 	clone := a.Clone().(*sketch)
 	for i := 0; i < 10_000; i++ {
 		clone.Add(uint64(1000 + i))
 	}
-	if a.Cardinality() != 3 {
-		t.Fatalf("original changed after clone mutation: %d", a.Cardinality())
+	if !bytes.Equal(a.Bytes(), before) {
+		t.Fatal("original register state changed after mutating the clone")
 	}
-	if clone.Cardinality() <= 3 {
-		t.Fatalf("clone cardinality = %d, want > 3", clone.Cardinality())
+	if bytes.Equal(clone.Bytes(), before) {
+		t.Fatal("clone shares register state with the original")
 	}
 }
 

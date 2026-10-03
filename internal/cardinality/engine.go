@@ -59,9 +59,28 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	return sk.Cardinality(), nil
 }
 
+// AddAndBytes inserts id into group and returns the serialised sketch,
+// both under a single write lock. Use this instead of Add followed by
+// Bytes when the bytes are about to be persisted: the split form can
+// interleave with a concurrent Add and write a stale sketch, silently
+// dropping the newer id.
+func (e *Engine) AddAndBytes(group string, id uint64) ([]byte, error) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	sk, ok := e.groups[group]
+	if !ok {
+		sk = e.alg.New()
+		e.groups[group] = sk
+	}
+	sk.Add(id)
+	return sk.Bytes(), nil
+}
+
 // Bytes returns the serialised sketch for group, or ErrUnknownGroup.
-// Used by persistence (BadgerStore.Save) so the store stays
-// algorithm-agnostic.
+// It is a point-in-time read: a concurrent Add may land immediately
+// after it returns, so do not use Add+Bytes when persisting (use
+// AddAndBytes). Used by the raft apply path, which is single-goroutine.
 func (e *Engine) Bytes(group string) ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()

@@ -119,14 +119,10 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		}
 		metricRaftProposalsTotal.WithLabelValues("success").Inc()
 	} else {
-		if err := s.engine.Add(req.Group, hashID(req.Id)); err != nil {
-			statusStr = "error"
-			return nil, status.Errorf(codes.Internal, "engine add: %v", err)
-		}
-		b, err := s.engine.Bytes(req.Group)
+		b, err := s.engine.AddAndBytes(req.Group, hashID(req.Id))
 		if err != nil {
 			statusStr = "error"
-			return nil, status.Errorf(codes.Internal, "engine bytes: %v", err)
+			return nil, status.Errorf(codes.Internal, "engine add: %v", err)
 		}
 		if err := s.store.Save(req.Group, b); err != nil {
 			statusStr = "error"
