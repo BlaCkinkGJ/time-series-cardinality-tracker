@@ -39,11 +39,9 @@ var (
 	ErrUnknownAlgorithm = errors.New("raft: unknown algorithm")
 )
 
-// Adder is the minimum engine surface a handler needs. Handlers never
-// touch a concrete engine type — they accept any Adder. Today the only
-// implementation is hllAdder wrapping *hll.Engine; once the engine
-// gains bitmap support and per-group algorithm override,
-// *cardinality.Engine will satisfy this directly and hllAdder goes away.
+// Adder is the minimal engine surface a handler needs, keeping handlers
+// engine-agnostic. Only hllAdder implements it today; *cardinality.Engine
+// replaces it once the engine takes uint64 ids and supports multiple algorithms.
 type Adder interface {
 	// Add inserts id into group's sketch, creating the group if absent.
 	Add(group string, id uint64) error
@@ -70,10 +68,8 @@ func NewRegistry() *Registry {
 	return &Registry{m: make(map[string]Handler)}
 }
 
-// DefaultRegistry returns a Registry preloaded with every built-in
-// command handler. This is the registry production Nodes use; tests
-// typically use NewRegistry plus individual Register* calls for
-// isolation.
+// DefaultRegistry returns a Registry preloaded with every built-in command
+// handler. Production Nodes use this; tests use NewRegistry for isolation.
 func DefaultRegistry() *Registry {
 	r := NewRegistry()
 	RegisterAdd(r)

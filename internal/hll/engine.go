@@ -16,9 +16,8 @@ package hll
 
 import "sync"
 
-// AlgoName is the registry/wire key identifying HLL sketches. It is
-// the value carried in MERGE_SKETCH payloads and, once hll implements
-// cardinality.Algorithm, the value returned by Name.
+// AlgoName is the wire/registry key for HLL sketches: the value carried in
+// MERGE_SKETCH payloads, and Name() once hll implements cardinality.Algorithm.
 const AlgoName = "hll"
 
 // Engine is a thread-safe map of series ID to HLL sketches.

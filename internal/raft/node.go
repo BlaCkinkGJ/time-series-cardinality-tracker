@@ -34,28 +34,17 @@ import (
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
-// hllAdder adapts *hll.Engine to the handler.Adder interface so handlers
-// see a uniform engine surface regardless of which cardinality
-// implementation is plugged in.
+// hllAdder adapts *hll.Engine to handler.Adder. Temporary: it goes away once
+// the engine takes uint64 ids natively and supports more than HLL.
 //
-// Two gaps force this adapter today:
-//   - *hll.Engine.Add takes a string id, but handler.Adder.Add takes uint64.
-//     We hash the id here for now. When the engine gains a uint64 Add
-//     natively, this adapter is deleted.
-//   - *hll.Engine has no Merge and only knows HLL. handler.Adder.Merge takes
-//     an algoName so the same wire format can carry HLL today and
-//     bitmap/HLL/etc. once the engine supports multiple algorithms.
-//     Until then, only hll.AlgoName passes the algo check.
+//   - Add hashes the uint64 id back to a string.
+//   - Merge accepts only hll.AlgoName — a wire-boundary type guard, not
+//     algorithm dispatch (payloads are opaque). No producer emits MERGE_SKETCH
+//     yet. Once cardinality.Engine backs this slot, its Merge is the single
+//     authority and this guard plus handler.ErrUnknownAlgorithm fold into
+//     cardinality.ErrAlgoMismatch.
 //
-// Note: the algoName check is a wire-boundary type guard, not algorithm
-// dispatch — payloads are opaque bytes, so it is the only place the HLL
-// claim is enforced before hll.Unmarshal. No producer emits MERGE_SKETCH
-// yet, so the branch is unreachable in production. Once cardinality.Engine
-// backs this slot, its Merge becomes the single authority and this guard
-// plus handler.ErrUnknownAlgorithm collapse into cardinality.ErrAlgoMismatch.
-//
-// ponytail: the engine slot becomes a single handler.Adder field directly,
-// with hllAdder removed.
+// ponytail: the engine slot becomes a direct handler.Adder field; hllAdder is deleted.
 type hllAdder struct{ eng *hll.Engine }
 
 func (a hllAdder) Add(group string, id uint64) error {
