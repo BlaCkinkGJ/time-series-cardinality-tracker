@@ -79,8 +79,9 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 // overwritten by an older one, so every acknowledged add is in the
 // persisted sketch.
 //
-// ponytail: save runs under the engine-wide write lock, serialising all
-// standalone writes. Per-group locks if standalone write throughput matters.
+// Trade-off: save runs under the engine-wide write lock, so standalone
+// writes are serialised engine-wide. Per-group locks if that throughput
+// ever matters.
 func (e *Engine) AddAndPersist(group string, id uint64, save func([]byte) error) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()

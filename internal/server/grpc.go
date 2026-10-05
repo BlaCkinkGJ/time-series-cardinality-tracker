@@ -32,10 +32,12 @@ import (
 )
 
 // hashID maps a string id to a uint64 for the opaque WAL payload.
-// ponytail: collision acceptable for HLL estimation (±few percent);
-// if lossless mapping becomes needed, switch the payload to a
-// length-prefixed bytes encoding so the original id is recoverable
-// without recomputing the sketch.
+// The mapping is lossy: a collision merges two ids and under-counts by
+// one, far inside HLL's own estimation error. It is also the hash the
+// pre-migration sketches were built with, so changing it drops the
+// decimal-form compatibility with them. If a lossless mapping is ever
+// needed, switch the payload to length-prefixed bytes so the original
+// id is recoverable without recomputing the sketch.
 func hashID(s string) uint64 { return murmur3.Sum64([]byte(s)) }
 
 // RaftNode is the minimal interface the server needs from the Raft layer.
