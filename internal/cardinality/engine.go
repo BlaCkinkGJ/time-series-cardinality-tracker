@@ -103,17 +103,17 @@ func (e *Engine) Persist(group string, save func([]byte) error) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	b, err := e.bytesLocked(group)
+	b, err := e.bytes(group)
 	if err != nil {
 		return err
 	}
 	return save(b)
 }
 
-// bytesLocked serialises group's sketch. Unexported on purpose: handing
-// raw bytes to a caller invites saving them outside the lock, which is
-// the stale-write window Persist exists to close. Callers must hold e.mu.
-func (e *Engine) bytesLocked(group string) ([]byte, error) {
+// bytes serialises group's sketch. Unexported on purpose: handing raw
+// bytes to a caller invites saving them outside the lock, which is the
+// stale-write window Persist exists to close. Callers must hold e.mu.
+func (e *Engine) bytes(group string) ([]byte, error) {
 	sk, ok := e.groups[group]
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
