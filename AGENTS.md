@@ -194,10 +194,10 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 
 Verified against the current tree — do not assume otherwise:
 
-- **State does not survive a restart.** The Raft log is `etcdraft.MemoryStorage`, snapshots are written but never read back (`Engine.Unmarshal` has no production caller), and `store.Load` has no callers.
-- **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s.
-- **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone.
-- **Proto `id`/`ids` are `string`**; hashing to `uint64` happens in `internal/server` (`hashID`).
+- **State does not survive a restart.** The Raft log is `etcdraft.MemoryStorage`, snapshots are written but never read back (`Engine.Unmarshal` has no production caller), and `store.Load` has no callers. — **#20**
+- **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s. — **#22**
+- **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone. — **#11**
+- **Proto `id`/`ids` are `string`**; hashing to `uint64` happens in `internal/server` (`hashID`). — **#21**
 
 ## References
 
