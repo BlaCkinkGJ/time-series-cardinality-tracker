@@ -79,7 +79,7 @@ When a write arrives:
 ### 3.1 Single-Node Raft Groups vs. Shared Consensus Ring
 - **The Problem**: A single global Raft cluster replicates all commands to all nodes. This severely limits horizontal write scalability since every node must process every write.
 - **The Solution**: We shard the keyspace using Consistent Hashing first. Each node runs its own isolated single-node Raft group.
-- **The Tradeoff**: If a node fails, its subset of keys is offline until it reboots (high availability is traded for maximum write throughput). Since BadgerDB persisted files are bound to the host volume, when the container restarts, it recovers its full FSM state instantly via the Raft snapshot and WAL logs.
+- **The Tradeoff**: If a node fails, its subset of keys is offline until it reboots (high availability is traded for maximum write throughput). Since BadgerDB files are bound to the host volume, a restarting container rebuilds its sketches from disk at startup (`store.LoadAll` → `Engine.Restore`). The Raft log itself is in-memory and starts empty, which is safe because re-applying an id is idempotent.
 
 ### 3.2 LSM-Tree (BadgerDB) vs. B-Tree
 - **The Problem**: Writing updated 16 KB register arrays constantly creates high random-write IOPS overhead.

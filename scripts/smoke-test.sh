@@ -49,3 +49,19 @@ if [ "$FINAL_CARD" -lt 95 ] || [ "$FINAL_CARD" -gt 105 ]; then
 fi
 
 echo "==> Smoke test PASSED successfully!"
+
+# Restart every node: the Raft log is in-memory, so this only works if the
+# startup path restores sketches from Badger (store.LoadAll -> Engine.Restore).
+echo "==> Restarting all nodes to verify restart recovery..."
+docker compose restart > /dev/null
+sleep 5
+
+RESTART_CARD=$(curl -s http://localhost:8081/v1/group/prod/cardinality | jq -r '.cardinality')
+echo "Node 1 reported cardinality after restart: $RESTART_CARD"
+
+if [ "$RESTART_CARD" -lt 95 ] || [ "$RESTART_CARD" -gt 105 ]; then
+  echo "Error: cardinality $RESTART_CARD did not survive the restart"
+  docker compose logs
+  exit 1
+fi
+echo "==> Restart recovery PASSED: cardinality $RESTART_CARD survived"

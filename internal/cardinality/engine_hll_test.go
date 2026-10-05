@@ -93,3 +93,54 @@ func TestEngine_MergeBytes(t *testing.T) {
 		t.Fatalf("want ErrAlgoMismatch, got %v", err)
 	}
 }
+
+// TestEngine_Restore covers the startup path: bytes written by Persist are
+// parsed back into a group by a fresh engine.
+func TestEngine_Restore(t *testing.T) {
+	src := cardinality.NewEngine(hll.Algorithm{})
+	const n = 1000
+	for i := 0; i < n; i++ {
+		if err := src.Add("g", uint64(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var payload []byte
+	if err := src.Persist("g", func(b []byte) error {
+		payload = append([]byte(nil), b...)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := cardinality.NewEngine(hll.Algorithm{})
+	if err := dst.Restore("g", payload); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	want, err := src.Cardinality("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := dst.Cardinality("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("restored cardinality %d != persisted %d", got, want)
+	}
+
+	// Restore is idempotent (a replay after restart must not double count).
+	if err := dst.Restore("g", payload); err != nil {
+		t.Fatalf("re-restore: %v", err)
+	}
+	if again, err := dst.Cardinality("g"); err != nil || again != want {
+		t.Fatalf("re-restore changed state: %d (err %v), want %d", again, err, want)
+	}
+
+	// Unparseable bytes fail without installing the group.
+	if err := dst.Restore("bad", []byte("not-a-sketch")); err == nil {
+		t.Fatal("want parse error for garbage bytes")
+	}
+	if _, err := dst.Cardinality("bad"); !errors.Is(err, cardinality.ErrUnknownGroup) {
+		t.Fatalf("failed restore must not create the group, got %v", err)
+	}
+}

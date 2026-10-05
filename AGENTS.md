@@ -25,6 +25,7 @@ HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers
 - **Write path (Raft)**: `Node.ProposeAdd` marshals a `pb.Command{type, group, payload}` into the Raft log → apply loop → `handler.Registry.Dispatch` → `cardinality.Engine` → `BadgerStore.Save`. Every replica applies the same entry.
 - **Standalone path**: with `-peers` empty there is no Raft node (`Server.node == nil`) and the gRPC handler calls `Engine.AddAndPersist` directly.
 - **Durability**: `Engine.AddAndPersist` / `Engine.Persist` hold the engine write lock across serialise **and** save, so no caller ever handles raw sketch bytes.
+- **Startup restore**: the Raft log is `etcdraft.MemoryStorage`, so state comes back from Badger — `cmd/server` runs `store.LoadAll(engine.Restore)` before serving. Replaying an id is idempotent, so starting from an empty log is safe.
 
 ## Project Structure
 
@@ -194,7 +195,6 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 
 Verified against the current tree — do not assume otherwise:
 
-- **State does not survive a restart.** The Raft log is `etcdraft.MemoryStorage`, snapshots are written but never read back (`Engine.Unmarshal` has no production caller), and `store.Load` has no callers. — **#20**
 - **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s. — **#22**
 - **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone. — **#11**
 - **Proto `id`/`ids` are `string`**; hashing to `uint64` happens in `internal/server` (`hashID`). — **#21**
