@@ -1,3 +1,17 @@
+// Copyright 2026 BlaCkinkGJ
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cardinality
 
 import (
@@ -59,6 +73,43 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	return sk.Cardinality(), nil
 }
 
+// AddAndPersist inserts id into group and, still holding the write lock,
+// passes the freshly serialised sketch to save. Insert and persist are
+// one atomic step: a concurrent add cannot have its newer snapshot
+// overwritten by an older one, so every acknowledged add is in the
+// persisted sketch.
+//
+// Trade-off: save runs under the engine-wide write lock, so standalone
+// writes are serialised engine-wide. Per-group locks if that throughput
+// ever matters.
+func (e *Engine) AddAndPersist(group string, id uint64, save func([]byte) error) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	sk, ok := e.groups[group]
+	if !ok {
+		sk = e.alg.New()
+		e.groups[group] = sk
+	}
+	sk.Add(id)
+	return save(sk.Bytes())
+}
+
+// Persist serialises group's sketch and passes it to save while holding
+// the write lock, so the bytes handed out are exactly the state at that
+// moment and no older snapshot can be written after a newer one.
+// Returns ErrUnknownGroup if group is not present.
+func (e *Engine) Persist(group string, save func([]byte) error) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	sk, ok := e.groups[group]
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownGroup, group)
+	}
+	return save(sk.Bytes())
+}
+
 // Merge unions remote into group's sketch. Returns ErrAlgoMismatch
 // if remote's AlgoName does not match this engine's algorithm.
 // If the group does not exist, remote is cloned into the engine so
@@ -80,6 +131,21 @@ func (e *Engine) Merge(group string, remote Sketch) error {
 	}
 	sk.Merge(remote)
 	return nil
+}
+
+// MergeBytes parses b with the engine's algorithm and unions the
+// result into group. algoName must match the engine's algorithm;
+// a mismatch (config drift between nodes) returns ErrAlgoMismatch.
+// This is the wire-facing entry point used by the MERGE_SKETCH handler.
+func (e *Engine) MergeBytes(group, algoName string, b []byte) error {
+	if algoName != e.alg.Name() {
+		return fmt.Errorf("%w: engine uses %q, got %q", ErrAlgoMismatch, e.alg.Name(), algoName)
+	}
+	remote, err := e.alg.Parse(b)
+	if err != nil {
+		return fmt.Errorf("cardinality: parse %q: %w", group, err)
+	}
+	return e.Merge(group, remote)
 }
 
 // Marshal serialises the live sketches to a gob-encoded
@@ -119,30 +185,5 @@ func (e *Engine) Unmarshal(data []byte) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.groups = groups
-	return nil
-}
-
-// Range calls fn for each group with the live sketch. If fn returns
-// an error, Range stops and returns that error.
-func (e *Engine) Range(fn func(group string, sk Sketch) error) error {
-	if fn == nil {
-		return errors.New("cardinality: nil range function")
-	}
-	e.mu.RLock()
-	type pair struct {
-		g  string
-		sk Sketch
-	}
-	snap := make([]pair, 0, len(e.groups))
-	for g, sk := range e.groups {
-		snap = append(snap, pair{g: g, sk: sk})
-	}
-	e.mu.RUnlock()
-
-	for _, p := range snap {
-		if err := fn(p.g, p.sk); err != nil {
-			return err
-		}
-	}
 	return nil
 }

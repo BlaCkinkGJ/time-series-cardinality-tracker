@@ -19,13 +19,14 @@ import (
 	"fmt"
 
 	badger "github.com/dgraph-io/badger/v4"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
 )
 
 // ErrNotFound is returned by Load when the group does not exist.
 var ErrNotFound = errors.New("store: group not found")
 
-// BadgerStore persists HLL state to BadgerDB.
+// BadgerStore persists opaque serialised sketches per group. It does not
+// know which cardinality algorithm produced the bytes; parsing is the
+// engine's job.
 type BadgerStore struct {
 	db *badger.DB
 }
@@ -46,23 +47,19 @@ func Open(dir string) (*BadgerStore, error) {
 func (s *BadgerStore) Close() error { return s.db.Close() }
 
 func key(group string) []byte {
-	return []byte("hll/" + group)
+	return []byte("sketch/" + group)
 }
 
-// Save serialises h and writes it to BadgerDB.
-func (s *BadgerStore) Save(group string, h *hll.HLL) error {
-	b, err := h.Marshal()
-	if err != nil {
-		return fmt.Errorf("store.Save marshal: %w", err)
-	}
+// Save writes b as the serialised sketch for group.
+func (s *BadgerStore) Save(group string, b []byte) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(key(group), b)
 	})
 }
 
-// Load reads and deserialises the HLL for group.
-func (s *BadgerStore) Load(group string) (*hll.HLL, error) {
-	var h *hll.HLL
+// Load reads the serialised sketch for group.
+func (s *BadgerStore) Load(group string) ([]byte, error) {
+	var b []byte
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key(group))
 		if errors.Is(err, badger.ErrKeyNotFound) {
@@ -72,10 +69,9 @@ func (s *BadgerStore) Load(group string) (*hll.HLL, error) {
 			return err
 		}
 		return item.Value(func(val []byte) error {
-			var e error
-			h, e = hll.Unmarshal(val)
-			return e
+			b = append([]byte(nil), val...)
+			return nil
 		})
 	})
-	return h, err
+	return b, err
 }

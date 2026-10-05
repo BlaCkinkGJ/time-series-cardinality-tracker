@@ -41,6 +41,10 @@ func newFakeAdder() *fakeAdder {
 	}
 }
 
+// errTestAlgo stands in for the engine's algo-mismatch error: the handler
+// only forwards it, so the concrete error identity is the engine's business.
+var errTestAlgo = errors.New("test: unknown algo")
+
 func (f *fakeAdder) Add(group string, id uint64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -51,7 +55,7 @@ func (f *fakeAdder) Add(group string, id uint64) error {
 	return nil
 }
 
-func (f *fakeAdder) Merge(group, algoName string, sketch []byte) error {
+func (f *fakeAdder) MergeBytes(group, algoName string, sketch []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if err, ok := f.errOn[group]; ok {
@@ -365,15 +369,15 @@ func TestApplyMergeSketch_UnregisteredAlgo(t *testing.T) {
 	r := NewRegistry()
 	RegisterMerge(r)
 	a := newFakeAdder()
-	a.errOnAlgo["bitmap"] = ErrUnknownAlgorithm
+	a.errOnAlgo["bitmap"] = errTestAlgo
 	cmd := &pb.Command{
 		Type:    TypeMergeSketch,
 		Group:   "g",
 		Payload: encodeMergePayload(t, "bitmap", []byte{1, 2, 3}),
 	}
 	err := r.Dispatch(cmd, a)
-	if !errors.Is(err, ErrUnknownAlgorithm) {
-		t.Fatalf("expected ErrUnknownAlgorithm, got %v", err)
+	if !errors.Is(err, errTestAlgo) {
+		t.Fatalf("expected errTestAlgo, got %v", err)
 	}
 	if a.sketchCount("g") != 0 {
 		t.Fatalf("adder recorded a merge on rejection")

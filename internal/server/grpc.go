@@ -26,16 +26,18 @@ import (
 	"google.golang.org/grpc/status"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
 	"github.com/yourorg/cardinality-tracker/internal/router"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
 
 // hashID maps a string id to a uint64 for the opaque WAL payload.
-// ponytail: collision acceptable for HLL estimation (±few percent);
-// if lossless mapping becomes needed, switch the payload to a
-// length-prefixed bytes encoding so the original id is recoverable
-// without recomputing the sketch.
+// The mapping is lossy: a collision merges two ids and under-counts by
+// one, far inside HLL's own estimation error. It is also the hash the
+// pre-migration sketches were built with, so changing it drops the
+// decimal-form compatibility with them. If a lossless mapping is ever
+// needed, switch the payload to length-prefixed bytes so the original
+// id is recoverable without recomputing the sketch.
 func hashID(s string) uint64 { return murmur3.Sum64([]byte(s)) }
 
 // RaftNode is the minimal interface the server needs from the Raft layer.
@@ -47,7 +49,7 @@ type RaftNode interface {
 // Server implements pb.CardinalityServiceServer.
 type Server struct {
 	pb.UnimplementedCardinalityServiceServer
-	engine   *hll.Engine
+	engine   *cardinality.Engine
 	store    *store.BadgerStore
 	node     RaftNode
 	router   *router.Ring // nil in standalone mode
@@ -59,7 +61,7 @@ type Server struct {
 }
 
 // New creates a Server. node, ring, selfAddr may be nil/empty for single-node operation.
-func New(engine *hll.Engine, st *store.BadgerStore, node RaftNode, ring *router.Ring, selfAddr string) *Server {
+func New(engine *cardinality.Engine, st *store.BadgerStore, node RaftNode, ring *router.Ring, selfAddr string) *Server {
 	return &Server{
 		engine:   engine,
 		store:    st,
@@ -119,12 +121,12 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		}
 		metricRaftProposalsTotal.WithLabelValues("success").Inc()
 	} else {
-		s.engine.Add(req.Group, req.Id)
-		if h, ok := s.engine.Get(req.Group); ok {
-			if err := s.store.Save(req.Group, h); err != nil {
-				statusStr = "error"
-				return nil, status.Errorf(codes.Internal, "store save: %v", err)
-			}
+		err := s.engine.AddAndPersist(req.Group, hashID(req.Id), func(b []byte) error {
+			return s.store.Save(req.Group, b)
+		})
+		if err != nil {
+			statusStr = "error"
+			return nil, status.Errorf(codes.Internal, "engine add: %v", err)
 		}
 	}
 	return &pb.AddResponse{Ok: true}, nil
@@ -203,8 +205,12 @@ func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResp
 		}
 	}
 
-	est := s.engine.Estimate(req.Group)
-	return &pb.QueryResponse{Group: req.Group, Cardinality: est}, nil
+	card, err := s.engine.Cardinality(req.Group)
+	if err != nil {
+		// Unknown group reads as empty, matching the pre-migration API.
+		card = 0
+	}
+	return &pb.QueryResponse{Group: req.Group, Cardinality: card}, nil
 }
 
 func (s *Server) getPeerClient(addr string) (pb.CardinalityServiceClient, error) {

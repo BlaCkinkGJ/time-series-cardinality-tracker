@@ -18,9 +18,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"log/slog"
-	"strconv"
 	"sync"
 	"time"
 
@@ -29,40 +27,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/hll"
+	"github.com/yourorg/cardinality-tracker/internal/cardinality"
 	"github.com/yourorg/cardinality-tracker/internal/raft/handler"
 	"github.com/yourorg/cardinality-tracker/internal/store"
 )
-
-// hllAdder adapts *hll.Engine to handler.Adder. Temporary: it goes away once
-// the engine takes uint64 ids natively and supports more than HLL.
-//
-//   - Add hashes the uint64 id back to a string.
-//   - Merge accepts only hll.AlgoName — a wire-boundary type guard, not
-//     algorithm dispatch (payloads are opaque). No producer emits MERGE_SKETCH
-//     yet. Once cardinality.Engine backs this slot, its Merge is the single
-//     authority and this guard plus handler.ErrUnknownAlgorithm fold into
-//     cardinality.ErrAlgoMismatch.
-//
-// ponytail: the engine slot becomes a direct handler.Adder field; hllAdder is deleted.
-type hllAdder struct{ eng *hll.Engine }
-
-func (a hllAdder) Add(group string, id uint64) error {
-	a.eng.Add(group, strconv.FormatUint(id, 10))
-	return nil
-}
-
-func (a hllAdder) Merge(group, algoName string, sketch []byte) error {
-	if algoName != hll.AlgoName {
-		return fmt.Errorf("%w: %q", handler.ErrUnknownAlgorithm, algoName)
-	}
-	remote, err := hll.Unmarshal(sketch)
-	if err != nil {
-		return fmt.Errorf("%w: %w", handler.ErrBadPayload, err)
-	}
-	a.eng.Merge(group, remote)
-	return nil
-}
 
 const snapshotThreshold = 10_000
 
@@ -82,7 +50,7 @@ type Node struct {
 	id       uint64
 	node     etcdraft.Node
 	storage  *etcdraft.MemoryStorage
-	engine   *hll.Engine
+	engine   *cardinality.Engine
 	store    *store.BadgerStore
 	registry *handler.Registry
 
@@ -96,7 +64,7 @@ type Node struct {
 }
 
 // NewNode creates a Raft node. Single-node cluster when peers=[]Peer{{ID: id}}.
-func NewNode(id uint64, peers []Peer, engine *hll.Engine, st *store.BadgerStore) *Node {
+func NewNode(id uint64, peers []Peer, engine *cardinality.Engine, st *store.BadgerStore) *Node {
 	storage := etcdraft.NewMemoryStorage()
 	cfg := &etcdraft.Config{
 		ID:              id,
@@ -162,14 +130,14 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 			slog.Error("raft: bad entry unmarshal error", "index", e.Index, "error", err)
 			continue
 		}
-		if err := n.registry.Dispatch(&cmd, hllAdder{n.engine}); err != nil {
+		if err := n.registry.Dispatch(&cmd, n.engine); err != nil {
 			slog.Error("raft: dispatch", "index", e.Index, "type", cmd.Type, "error", err)
 			continue
 		}
-		if h, ok := n.engine.Get(cmd.Group); ok {
-			if err := n.store.Save(cmd.Group, h); err != nil {
-				slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
-			}
+		if err := n.engine.Persist(cmd.Group, func(b []byte) error {
+			return n.store.Save(cmd.Group, b)
+		}); err != nil {
+			slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
 		}
 		n.mu.Lock()
 		n.appliedIdx = e.Index
@@ -188,7 +156,7 @@ func (n *Node) maybeSnapshot() {
 		return
 	}
 
-	data, err := SnapshotEngine(n.engine)
+	data, err := n.engine.Marshal()
 	if err != nil {
 		slog.Error("raft: snapshot encode error", "error", err)
 		return

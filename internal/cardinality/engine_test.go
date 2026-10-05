@@ -1,3 +1,17 @@
+// Copyright 2026 BlaCkinkGJ
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package cardinality
 
 import (
@@ -152,36 +166,69 @@ func TestEngine_MarshalRoundtrip(t *testing.T) {
 	}
 }
 
-func TestEngine_Range_VisitsAll(t *testing.T) {
+func TestEngine_AddAndPersist(t *testing.T) {
 	e := newTestEngine(t)
-	if err := e.Add("a", 1); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
-	if err := e.Add("b", 1); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
-	if err := e.Add("c", 1); err != nil {
-		t.Fatalf("Add: %v", err)
+	var saved [][]byte
+	save := func(b []byte) error {
+		saved = append(saved, append([]byte(nil), b...))
+		return nil
 	}
 
-	seen := map[string]uint64{}
-	err := e.Range(func(group string, sk Sketch) error {
-		if sk == nil {
-			t.Errorf("group %s: nil sketch", group)
+	if err := e.AddAndPersist("g", 1, save); err != nil {
+		t.Fatalf("AddAndPersist: %v", err)
+	}
+	if err := e.AddAndPersist("g", 2, save); err != nil {
+		t.Fatalf("AddAndPersist: %v", err)
+	}
+	if len(saved) != 2 {
+		t.Fatalf("save calls = %d, want 2", len(saved))
+	}
+	// Each persisted snapshot must already contain the id it accompanied.
+	for i, want := range []uint64{1, 2} {
+		sk, err := fakeAlgorithm{}.Parse(saved[i])
+		if err != nil {
+			t.Fatalf("parse save %d: %v", i, err)
 		}
-		seen[group] = sk.Cardinality()
-		return nil
-	})
+		if got := sk.Cardinality(); got != want {
+			t.Fatalf("save %d cardinality = %d, want %d", i, got, want)
+		}
+	}
+}
+
+// TestEngine_AddAndPersist_ConcurrentSuperset pins the invariant that
+// made AddAndPersist necessary: because save runs under the same lock as
+// the insert, the last persisted snapshot is the superset containing
+// every add. Releasing the lock before save lets an older snapshot win.
+func TestEngine_AddAndPersist_ConcurrentSuperset(t *testing.T) {
+	e := newTestEngine(t)
+	const n = 128
+
+	var mu sync.Mutex
+	var last []byte
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(id uint64) {
+			defer wg.Done()
+			err := e.AddAndPersist("g", id, func(b []byte) error {
+				mu.Lock()
+				last = append(last[:0], b...)
+				mu.Unlock()
+				return nil
+			})
+			if err != nil {
+				t.Errorf("AddAndPersist: %v", err)
+			}
+		}(uint64(i))
+	}
+	wg.Wait()
+
+	sk, err := fakeAlgorithm{}.Parse(last)
 	if err != nil {
-		t.Fatalf("Range: %v", err)
+		t.Fatalf("parse last save: %v", err)
 	}
-	if len(seen) != 3 {
-		t.Fatalf("Range visited %d groups, want 3", len(seen))
-	}
-	for _, g := range []string{"a", "b", "c"} {
-		if _, ok := seen[g]; !ok {
-			t.Fatalf("Range did not visit %q", g)
-		}
+	if got := sk.Cardinality(); got != n {
+		t.Fatalf("final persisted cardinality = %d, want %d", got, n)
 	}
 }
 
