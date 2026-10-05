@@ -60,6 +60,17 @@ go build ./...
 ```
 
 ### Test
+
+File-scoped first — one package or one test is enough while iterating:
+
+```bash
+go test ./internal/raft/...                                  # one package
+go test -run TestEngine_MergeBytes ./internal/cardinality/   # one test
+golangci-lint run ./internal/server/...                      # one package
+```
+
+Full suite (what CI runs) before handing work back:
+
 ```bash
 make test
 # or with integration tests
@@ -158,6 +169,12 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 - Protobuf definitions in `proto/`, generated code in `gen/`
 - New files carry the repo's Apache 2.0 header (see any file under `internal/`)
 - `Sketch` implementations need not be concurrency-safe — the per-group `Engine` serialises access
+
+## Permissions
+
+- **Autonomous** — reading files, `gofmt` / `go vet` / `golangci-lint`, running tests, editing source and docs.
+- **Ask first** — dependency changes (`go get`, `go.mod`), `git push` and branch deletion, deleting files, anything under `deploy/`, and docker/k8s commands.
+- **Never** — commit credentials, `.env` files, or a `-data` directory.
 
 ## CI
 
