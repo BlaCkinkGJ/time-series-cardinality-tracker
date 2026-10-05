@@ -23,7 +23,7 @@ const (
 
 type Command struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // "ADD", future: "BATCH_ADD", "MERGE_SKETCH", ...
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"` // "ADD", "BATCH_ADD", "MERGE_SKETCH"
 	Group         string                 `protobuf:"bytes,2,opt,name=group,proto3" json:"group,omitempty"`
 	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"` // opaque, schema agreed per type
 	unknownFields protoimpl.UnknownFields
