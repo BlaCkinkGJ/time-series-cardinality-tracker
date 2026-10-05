@@ -16,7 +16,7 @@ package bitmap
 
 import (
 	"github.com/RoaringBitmap/roaring/roaring64"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
 )
 
 // algoName is the algo key for this algorithm.

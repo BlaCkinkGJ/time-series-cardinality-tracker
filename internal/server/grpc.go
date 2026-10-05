@@ -25,10 +25,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-	"github.com/yourorg/cardinality-tracker/internal/router"
-	"github.com/yourorg/cardinality-tracker/internal/store"
+	pb "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/router"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
 // hashID maps a string id to a uint64 for the opaque WAL payload.

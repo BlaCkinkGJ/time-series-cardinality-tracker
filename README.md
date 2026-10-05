@@ -109,7 +109,7 @@ Actual benchmark results on Apple Silicon (M-series / arm64):
 ```
 goos: darwin
 goarch: arm64
-pkg: github.com/yourorg/cardinality-tracker/bench
+pkg: github.com/BlaCkinkGJ/time-series-cardinality-tracker/bench
 BenchmarkHLL_Add-10                            	184483040	         6.557 ns/op	       0 B/op	       0 allocs/op
 BenchmarkHLL_Estimate-10                       	    4857	    227917 ns/op	       0 B/op	       0 allocs/op
 BenchmarkEngine_Add_Parallel-10                	 9261643	       131.2 ns/op	      39 B/op	       2 allocs/op

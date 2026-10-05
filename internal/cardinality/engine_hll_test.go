@@ -18,8 +18,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality/hll"
 )
 
 // TestEngine_HLLRoundtrip exercises the HLL implementation through the

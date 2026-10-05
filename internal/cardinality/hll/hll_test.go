@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/spaolacci/murmur3"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
 )
 
 func TestAlgorithm_Name(t *testing.T) {

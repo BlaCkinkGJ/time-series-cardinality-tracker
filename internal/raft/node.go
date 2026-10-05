@@ -26,10 +26,10 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-	"github.com/yourorg/cardinality-tracker/internal/raft/handler"
-	"github.com/yourorg/cardinality-tracker/internal/store"
+	pb "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/raft/handler"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
 const snapshotThreshold = 10_000
