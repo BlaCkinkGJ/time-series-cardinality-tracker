@@ -4,46 +4,50 @@
 
 **Time-Series Cardinality Tracker** — A sharded time-series cardinality tracker implemented in Go.
 
-Estimates the number of unique values (cardinality) in time-series data using pluggable cardinality sketches (HyperLogLog++, Roaring64 bitmap), with distributed coordination via Raft consensus.
+Estimates the number of unique values (cardinality) in time-series data using pluggable cardinality sketches (HyperLogLog++ by default, Roaring64 bitmap), with distributed coordination via Raft consensus.
 
 ## Tech Stack
 
 - **Go 1.21.3**
-- **Pluggable cardinality engine** — `internal/cardinality` with HyperLogLog++ (precision p=14) and Roaring64 bitmap backends
-- **etcd Raft v3** — FSM log compaction and snapshotting
-- **BadgerDB v4** — LSM-tree disk persistence for serialised sketches
-- **gRPC + grpc-gateway** — Internal communication and HTTP REST API
-- **murmur3 + Consistent Hashing** — Shard routing and request forwarding
+- **Pluggable cardinality engine** — `internal/cardinality` (`Sketch`/`Algorithm` interfaces) with `hll` (HLL++ p=14) and `bitmap` (Roaring64) backends
+- **etcd Raft v3** — log replication, compaction, snapshotting
+- **BadgerDB v4** — opaque serialised sketches at key prefix `sketch/<group>`
+- **gRPC + grpc-gateway** — internal communication and HTTP REST API
+- **murmur3** — HLL register hashing and consistent-hash shard routing
 
 ## Architecture
 
 ```
-HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers) → Cardinality Engine + BadgerDB
+HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers) → Cardinality Engine → BadgerDB
 ```
 
 - **Shard Routing**: Each `group` maps to a shard. The shard's Raft group is replicated across 3+ nodes.
-- **Request Forwarding**: The consistent hash resolves the shard. Requests are routed to the leader node.
-- **Local Durability**: Each shard has a Raft group. Proposals are written to the Raft log, applied to the in-memory cardinality engine, and committed to BadgerDB on every replica.
+- **Write path (Raft)**: `Node.ProposeAdd` marshals a `pb.Command{type, group, payload}` into the Raft log → apply loop → `handler.Registry.Dispatch` → `cardinality.Engine` → `BadgerStore.Save`. Every replica applies the same entry.
+- **Standalone path**: with `-peers` empty there is no Raft node (`Server.node == nil`) and the gRPC handler calls `Engine.AddAndPersist` directly.
+- **Durability**: `Engine.AddAndPersist` / `Engine.Persist` hold the engine write lock across serialise **and** save, so no caller ever handles raw sketch bytes.
 
 ## Project Structure
 
 ```
-├── cmd/server/          # Entry point (main.go)
+├── cmd/server/                  # Entry point: wires Engine + Raft + gRPC (see Server Flags)
 ├── internal/
-│   ├── cardinality/     # Pluggable cardinality engine (hll, bitmap)
-│   ├── raft/            # Raft consensus (FSM, node management)
-│   ├── router/          # Consistent hash shard routing
-│   ├── server/          # gRPC server, metrics, integration tests
-│   └── store/           # BadgerDB persistence layer
-├── proto/               # Protocol Buffer definitions
-├── gen/                 # Generated gRPC/gateway code
+│   ├── cardinality/             # Pluggable engine: Sketch/Algorithm interfaces + per-group Engine
+│   │   ├── hll/                 # HLL++ (p=14, 16384 registers) — the backend cmd/server uses
+│   │   └── bitmap/              # Roaring64 bitmap (exact counts)
+│   ├── raft/                    # Raft node: apply loop, snapshotting (node.go)
+│   │   └── handler/             # Generic WAL: command registry + ADD/BATCH_ADD/MERGE_SKETCH
+│   ├── router/                  # Consistent hash shard routing
+│   ├── server/                  # gRPC service, grpc-gateway, metrics, integration tests
+│   └── store/                   # BadgerDB persistence (opaque bytes at sketch/<group>)
+├── proto/cardinality/v1/        # cardinality.proto (API) + command.proto (WAL Command)
+├── gen/                         # Generated gRPC/gateway code — never edit by hand, run `make proto`
 ├── deploy/
-│   ├── docker/          # Dockerfile + docker-compose.yml
-│   └── kubernetes/      # K8s manifests (StatefulSet, Services, ServiceMonitor)
-├── bench/               # Benchmark tests
-├── docs/                # Architecture, API spec, deployment, theory docs
-├── scripts/             # smoke-test.sh
-└── third_party/         # External proto dependencies
+│   ├── docker/                  # Dockerfile + docker-compose.yml (3 nodes)
+│   └── kubernetes/              # K8s manifests (StatefulSet, Services, ServiceMonitor)
+├── bench/                       # Benchmark tests
+├── docs/                        # Architecture, API spec, deployment, theory
+├── scripts/                     # smoke-test.sh (3-node docker cluster)
+└── third_party/                 # google/api protos required by grpc-gateway
 ```
 
 ## Development Commands
@@ -80,6 +84,38 @@ golangci-lint run
 ```bash
 make proto
 ```
+
+### Smoke Test
+```bash
+./scripts/smoke-test.sh   # docker compose 3-node cluster; tears down on exit
+```
+
+### Server Flags
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `-http-port` | `8080` | HTTP gateway listen port |
+| `-grpc-port` | `9090` | gRPC listen port |
+| `-data` | `/tmp/cardinality-data` | BadgerDB data directory |
+| `-node-id` | `1` | Raft node ID |
+| `-peers` | `""` | Comma-separated `host:port` peers; **empty = standalone (no Raft)** |
+
+## Extending
+
+### Add a WAL command (no proto or enum change)
+
+The WAL is generic: `Command.type` is a string and `payload` is opaque bytes, so a new command needs no proto edit.
+
+1. `internal/raft/handler/<name>.go` — `const TypeX = "X"`, `func applyX(cmd *pb.Command, apply Adder) error`, and `func RegisterX(r *Registry) { r.Register(TypeX, applyX) }`.
+2. Call `RegisterX(r)` inside `DefaultRegistry()` (`internal/raft/handler/handler.go`).
+3. Add a proposer that marshals `pb.Command{Type: TypeX, ...}` (see `Node.ProposeAdd`).
+
+The payload schema is agreed per type and decoded only by its handler; a malformed payload returns `ErrBadPayload`.
+
+### Add an algorithm
+
+1. Implement `cardinality.Sketch` + `cardinality.Algorithm` (`AlgoName()` must equal `Name()`); `internal/cardinality/bitmap` is the smallest example.
+2. Pass it to `cardinality.NewEngine(alg)` at the wiring point (`cmd/server/main.go`). One algorithm per Engine; merging a foreign sketch returns `cardinality.ErrAlgoMismatch`.
 
 ## Docker
 
@@ -120,14 +156,31 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 - Integration tests use `-tags=integration` build tag
 - Follow standard Go project layout (`cmd/`, `internal/`, `proto/`)
 - Protobuf definitions in `proto/`, generated code in `gen/`
+- New files carry the repo's Apache 2.0 header (see any file under `internal/`)
+- `Sketch` implementations need not be concurrency-safe — the per-group `Engine` serialises access
+
+## CI
+
+`.github/workflows/ci.yml` runs: `lint`, `license-check`, `test` (unit + integration), `smoke-test` (docker), `validate-k8s`, `validate-docker`.
 
 ## Key Design Decisions
 
-- HLL++ with p=14 gives ~16K registers (16,384) — good balance of accuracy and memory
-- Raft provides strong consistency for cardinality updates across replicas
-- BadgerDB persists serialised sketches to survive restarts without losing state
-- Consistent hashing distributes load evenly across shards with minimal reshuffling on topology changes
-- Each shard is independently managed by its own Raft group
+- **One algorithm per `Engine`** (`NewEngine(alg)`). There is no `Register`/`Get` name registry, so per-group algorithm selection does not exist.
+- **HLL++ p=14** gives 16384 registers (~16 KB per sketch) at ~0.81% standard error. `Add` hashes the **decimal** form of the id with murmur3, matching the pre-migration raft path so raft-written sketches keep their counts.
+- **`bitmap` is Roaring64**, i.e. compressed — exact counts, not a dense `max_id/8` bitset.
+- **Badger stores opaque sketch bytes** at `sketch/<group>`; the store knows nothing about HLL or roaring.
+- **Raft for consistency, standalone for single-node**; both paths persist through the engine, never around it.
+- **Snapshot payload** is `Engine.Marshal` (gob of every group), handed to `storage.ApplySnapshot`.
+- **Consistent hashing** keeps reshuffling minimal on topology changes; each shard is managed by its own Raft group.
+
+## Known Gaps
+
+Verified against the current tree — do not assume otherwise:
+
+- **State does not survive a restart.** The Raft log is `etcdraft.MemoryStorage`, snapshots are written but never read back (`Engine.Unmarshal` has no production caller), and `store.Load` has no callers.
+- **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s.
+- **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone.
+- **Proto `id`/`ids` are `string`**; hashing to `uint64` happens in `internal/server` (`hashID`).
 
 ## References
 
