@@ -134,10 +134,9 @@ func (n *Node) applyEntries(entries []raftpb.Entry) {
 			slog.Error("raft: dispatch", "index", e.Index, "type", cmd.Type, "error", err)
 			continue
 		}
-		err := n.engine.Persist(cmd.Group, func(b []byte) error {
+		if err := n.engine.Persist(cmd.Group, func(b []byte) error {
 			return n.store.Save(cmd.Group, b)
-		})
-		if err != nil && !errors.Is(err, cardinality.ErrUnknownGroup) {
+		}); err != nil {
 			slog.Error("raft: failed to save to BadgerDB store", "group", cmd.Group, "error", err)
 		}
 		n.mu.Lock()
