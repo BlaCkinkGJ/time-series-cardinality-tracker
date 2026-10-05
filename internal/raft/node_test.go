@@ -63,6 +63,26 @@ func TestSingleNodePropose(t *testing.T) {
 	if card == 0 {
 		t.Fatal("expected non-zero cardinality after propose")
 	}
+
+	// The apply path must also persist the sketch to Badger.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		raw, err := st.Load("ts-x")
+		if err == nil && len(raw) > 0 {
+			sk, perr := (hll.Algorithm{}).Parse(raw)
+			if perr != nil {
+				t.Fatalf("parse persisted sketch: %v", perr)
+			}
+			if sk.Cardinality() == 0 {
+				t.Fatal("persisted sketch is empty")
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("apply did not persist the sketch to the store: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func TestSnapshotRoundTrip(t *testing.T) {

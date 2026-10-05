@@ -95,18 +95,19 @@ func (e *Engine) AddAndPersist(group string, id uint64, save func([]byte) error)
 	return save(sk.Bytes())
 }
 
-// Bytes returns the serialised sketch for group, or ErrUnknownGroup.
-// It is a point-in-time read: a concurrent Add may land immediately
-// after it returns. Used only by the raft apply path, which is the sole
-// writer in that mode and therefore cannot observe a reordering.
-func (e *Engine) Bytes(group string) ([]byte, error) {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
+// Persist serialises group's sketch and passes it to save while holding
+// the write lock, so the bytes handed out are exactly the state at that
+// moment and no older snapshot can be written after a newer one.
+// Returns ErrUnknownGroup if group is not present.
+func (e *Engine) Persist(group string, save func([]byte) error) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
 	sk, ok := e.groups[group]
 	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownGroup, group)
+		return fmt.Errorf("%w: %q", ErrUnknownGroup, group)
 	}
-	return sk.Bytes(), nil
+	return save(sk.Bytes())
 }
 
 // Merge unions remote into group's sketch. Returns ErrAlgoMismatch

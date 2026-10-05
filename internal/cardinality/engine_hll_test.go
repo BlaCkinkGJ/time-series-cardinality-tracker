@@ -66,9 +66,15 @@ func TestEngine_MergeBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	payload, err := src.Bytes("g")
-	if err != nil {
+	var payload []byte
+	if err := src.Persist("g", func(b []byte) error {
+		payload = append([]byte(nil), b...)
+		return nil
+	}); err != nil {
 		t.Fatal(err)
+	}
+	if err := src.Persist("missing", func([]byte) error { return nil }); !errors.Is(err, cardinality.ErrUnknownGroup) {
+		t.Fatalf("want ErrUnknownGroup for missing group, got %v", err)
 	}
 
 	dst := cardinality.NewEngine(hll.Algorithm{})
