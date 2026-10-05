@@ -1,4 +1,4 @@
-module github.com/yourorg/cardinality-tracker
+module github.com/BlaCkinkGJ/time-series-cardinality-tracker
 
 go 1.21
 

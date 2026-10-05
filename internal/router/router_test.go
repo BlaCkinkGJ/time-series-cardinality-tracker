@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/yourorg/cardinality-tracker/internal/router"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/router"
 )
 
 func TestResolve_Deterministic(t *testing.T) {

@@ -18,7 +18,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
+	pb "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1"
 )
 
 // TypeAdd is the registered command type for the ADD handler.

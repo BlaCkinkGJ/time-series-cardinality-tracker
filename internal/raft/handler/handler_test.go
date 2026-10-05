@@ -20,7 +20,7 @@ import (
 	"sync"
 	"testing"
 
-	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
+	pb "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1"
 )
 
 // fakeAdder records every Add call. Concurrency-safe for parallel tests.

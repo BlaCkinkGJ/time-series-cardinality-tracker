@@ -25,7 +25,7 @@ import (
 	"strconv"
 
 	"github.com/spaolacci/murmur3"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
 )
 
 // algoName is the wire/registry key for HLL sketches: the value carried in

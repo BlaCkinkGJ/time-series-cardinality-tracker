@@ -20,10 +20,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
-	"github.com/yourorg/cardinality-tracker/internal/raft"
-	"github.com/yourorg/cardinality-tracker/internal/store"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality/hll"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/raft"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
 func TestSingleNodePropose(t *testing.T) {

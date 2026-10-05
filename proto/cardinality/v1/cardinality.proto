@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package cardinality.v1;
-option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;cardinalityv1";
+option go_package = "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1;cardinalityv1";
 
 import "google/api/annotations.proto";
 

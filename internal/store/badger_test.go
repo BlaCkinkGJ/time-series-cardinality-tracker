@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/yourorg/cardinality-tracker/internal/store"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
 func tempStore(t *testing.T) (*store.BadgerStore, func()) {

@@ -25,11 +25,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	pb "github.com/yourorg/cardinality-tracker/gen/cardinality/v1"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality"
-	"github.com/yourorg/cardinality-tracker/internal/cardinality/hll"
-	"github.com/yourorg/cardinality-tracker/internal/server"
-	"github.com/yourorg/cardinality-tracker/internal/store"
+	pb "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality/hll"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/server"
+	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
 const bufSize = 1 << 20

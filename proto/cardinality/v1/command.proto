@@ -1,10 +1,10 @@
 syntax = "proto3";
 
 package cardinality.v1;
-option go_package = "github.com/yourorg/cardinality-tracker/gen/cardinality/v1;cardinalityv1";
+option go_package = "github.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1;cardinalityv1";
 
 message Command {
-  string type    = 1;  // "ADD", future: "BATCH_ADD", "MERGE_SKETCH", ...
+  string type    = 1;  // "ADD", "BATCH_ADD", "MERGE_SKETCH"
   string group   = 2;
   bytes  payload = 3;  // opaque, schema agreed per type
 }
