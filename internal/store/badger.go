@@ -15,6 +15,7 @@
 package store
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -46,8 +47,11 @@ func Open(dir string) (*BadgerStore, error) {
 // Close shuts down BadgerDB gracefully.
 func (s *BadgerStore) Close() error { return s.db.Close() }
 
+// keyPrefix namespaces sketch bytes from any future key kind.
+const keyPrefix = "sketch/"
+
 func key(group string) []byte {
-	return []byte("sketch/" + group)
+	return []byte(keyPrefix + group)
 }
 
 // Save writes b as the serialised sketch for group.
@@ -74,4 +78,27 @@ func (s *BadgerStore) Load(group string) ([]byte, error) {
 		})
 	})
 	return b, err
+}
+
+// LoadAll calls fn for every persisted group, in key order. It is the
+// startup path: the engine rebuilds each group by parsing these bytes.
+// An error from fn aborts the iteration and is returned.
+func (s *BadgerStore) LoadAll(fn func(group string, b []byte) error) error {
+	prefix := []byte(keyPrefix)
+	return s.db.View(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.Prefix = prefix
+		it := txn.NewIterator(opts)
+		defer it.Close()
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			item := it.Item()
+			group := string(bytes.TrimPrefix(item.Key(), prefix))
+			if err := item.Value(func(val []byte) error {
+				return fn(group, append([]byte(nil), val...))
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

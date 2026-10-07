@@ -63,3 +63,62 @@ func TestLoad_NotFound(t *testing.T) {
 		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
+
+func TestLoadAll(t *testing.T) {
+	const (
+		groupA = "ts-a"
+		groupB = "ts-b"
+	)
+	s, cleanup := tempStore(t)
+	defer cleanup()
+
+	// Empty store: no callbacks.
+	calls := 0
+	if err := s.LoadAll(func(string, []byte) error { calls++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("empty store yielded %d groups", calls)
+	}
+
+	// Saved out of key order; iteration must be deterministic and complete.
+	for _, g := range []string{groupB, groupA} {
+		if err := s.Save(g, []byte("bytes-"+g)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var groups []string
+	values := map[string]string{}
+	if err := s.LoadAll(func(g string, b []byte) error {
+		groups = append(groups, g)
+		values[g] = string(b)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 2 || groups[0] != groupA || groups[1] != groupB {
+		t.Fatalf("want [%s %s] in key order, got %v", groupA, groupB, groups)
+	}
+	if values[groupA] != "bytes-"+groupA || values[groupB] != "bytes-"+groupB {
+		t.Fatalf("wrong payloads: %v", values)
+	}
+
+	// Overwrite stays a single entry; callback errors abort.
+	if err := s.Save(groupA, []byte("bytes-"+groupA+"2")); err != nil {
+		t.Fatal(err)
+	}
+	errStop := errors.New("stop")
+	calls = 0
+	if err := s.LoadAll(func(g string, b []byte) error {
+		calls++
+		if g == groupA && string(b) != "bytes-"+groupA+"2" {
+			t.Fatalf("stale payload for %s: %q", groupA, b)
+		}
+		return errStop
+	}); !errors.Is(err, errStop) {
+		t.Fatalf("want callback error to propagate, got %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("error must abort iteration, got %d calls", calls)
+	}
+}

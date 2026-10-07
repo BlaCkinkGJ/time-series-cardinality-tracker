@@ -68,6 +68,20 @@ func run() error {
 
 	eng := cardinality.NewEngine(hll.Algorithm{})
 
+	// Rebuild state from disk before serving: every applied entry was
+	// persisted, and the Raft log itself is in-memory.
+	restored := 0
+	if err := st.LoadAll(func(group string, b []byte) error {
+		if err := eng.Restore(group, b); err != nil {
+			return err
+		}
+		restored++
+		return nil
+	}); err != nil {
+		return fmt.Errorf("restore engine state failed: %w", err)
+	}
+	slog.Info("restored engine state", "groups", restored)
+
 	var ring *router.Ring
 	var selfAddr string
 

@@ -110,6 +110,23 @@ func (e *Engine) Persist(group string, save func([]byte) error) error {
 	return save(sk.Bytes())
 }
 
+// Restore parses b with the engine's algorithm and installs the result as
+// group's sketch, replacing any existing one. It is the counterpart of
+// Persist and the startup path that rebuilds state from the store: every
+// applied entry was persisted, so the stored bytes are the authoritative
+// state. Re-applying an id after a restart is idempotent, which is why
+// replaying from an empty Raft log is safe.
+func (e *Engine) Restore(group string, b []byte) error {
+	sk, err := e.alg.Parse(b)
+	if err != nil {
+		return fmt.Errorf("cardinality: parse %q: %w", group, err)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.groups[group] = sk
+	return nil
+}
+
 // Merge unions remote into group's sketch. Returns ErrAlgoMismatch
 // if remote's AlgoName does not match this engine's algorithm.
 // If the group does not exist, remote is cloned into the engine so
