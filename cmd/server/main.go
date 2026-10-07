@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -43,11 +44,13 @@ import (
 )
 
 var (
-	grpcPort  = flag.Int("grpc-port", 9090, "gRPC listen port")
-	httpPort  = flag.Int("http-port", 8080, "HTTP gateway listen port")
-	dataDir   = flag.String("data", "/tmp/cardinality-data", "BadgerDB data directory")
-	nodeID    = flag.Uint64("node-id", 1, "Raft Node ID")
-	peersFlag = flag.String("peers", "", "Comma-separated list of peers (host:port)")
+	grpcPort         = flag.Int("grpc-port", 9090, "gRPC listen port")
+	httpPort         = flag.Int("http-port", 8080, "HTTP gateway listen port")
+	metricsPort      = flag.Int("metrics-port", 8081, "metrics and health listen port")
+	metricsMaxGroups = flag.Int("metrics-max-groups", 1000, "max groups exported by the per-group cardinality metric (0 = unlimited)")
+	dataDir          = flag.String("data", "/tmp/cardinality-data", "BadgerDB data directory")
+	nodeID           = flag.Uint64("node-id", 1, "Raft Node ID")
+	peersFlag        = flag.String("peers", "", "Comma-separated list of peers (host:port)")
 )
 
 func main() {
@@ -102,6 +105,20 @@ func run() error {
 	go node.Run()
 	defer node.Stop()
 
+	prometheus.MustRegister(
+		server.NewEngineCollector(eng, *metricsMaxGroups),
+		server.NewRaftCollector(node),
+	)
+
+	// Ready means "this node can answer correct reads": it is the Raft
+	// leader of its group. State restore happens before any listener
+	// opens, so it cannot be observed through /readyz and is not part of
+	// this predicate. Single-node groups elect within ~1s.
+	ready := func() bool {
+		_, isLeader, _ := node.Status()
+		return isLeader
+	}
+
 	srv := server.New(eng, st, node, ring, selfAddr)
 	defer srv.Close()
 
@@ -110,7 +127,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("listen grpc failed: %w", err)
 	}
-	gs := grpc.NewServer()
+	gs := grpc.NewServer(grpc.UnaryInterceptor(server.UnaryMetricsInterceptor))
 	pb.RegisterCardinalityServiceServer(gs, srv)
 	reflection.Register(gs)
 	go func() {
@@ -132,7 +149,11 @@ func run() error {
 	}
 
 	mainMux := http.NewServeMux()
-	mainMux.Handle("/metrics", promhttp.Handler())
+	// Health also answers on the gateway port so external load balancers
+	// and humans can probe a node without reaching the metrics listener.
+	// /metrics deliberately does not: it stays off the public surface.
+	mainMux.HandleFunc("/healthz", server.HealthzHandler())
+	mainMux.HandleFunc("/readyz", server.ReadyzHandler(ready))
 	mainMux.Handle("/", mux)
 
 	httpSrv := &http.Server{
@@ -147,6 +168,24 @@ func run() error {
 		}
 	}()
 
+	// ── Metrics + health (not exposed by the public services) ──
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsMux.HandleFunc("/healthz", server.HealthzHandler())
+	metricsMux.HandleFunc("/readyz", server.ReadyzHandler(ready))
+
+	metricsSrv := &http.Server{
+		Addr:              fmt.Sprintf(":%d", *metricsPort),
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	go func() {
+		slog.Info("metrics listening", "port", *metricsPort, "max_groups", *metricsMaxGroups)
+		if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("metrics serve failed", "error", err)
+		}
+	}()
+
 	// ── Graceful shutdown ──
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
@@ -158,6 +197,9 @@ func run() error {
 	defer shutdownCancel()
 	if err := httpSrv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("HTTP gateway shutdown failed", "error", err)
+	}
+	if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("metrics shutdown failed", "error", err)
 	}
 	return nil
 }

@@ -36,11 +36,14 @@ docker compose up -d
 
 ### Ports
 
-| Node   | HTTP (REST + metrics) | gRPC  |
-|--------|-----------------------|-------|
-| node1  | `8081`                | `9091`|
-| node2  | `8082`                | `9092`|
-| node3  | `8083`                | `9093`|
+| Node   | HTTP (REST) | Metrics + health | gRPC  |
+|--------|-------------|------------------|-------|
+| node1  | `8081`      | `8181`           | `9091`|
+| node2  | `8082`      | `8182`           | `9092`|
+| node3  | `8083`      | `8183`           | `9093`|
+
+Metrics and health are served on a separate port on purpose: `/metrics`
+is never reachable through the public HTTP surface.
 
 ### Verify
 
@@ -52,6 +55,13 @@ curl -X POST http://localhost:8081/v1/group/prod/add \
 
 # Query cardinality from any node (forwarded automatically)
 curl http://localhost:8082/v1/group/prod/cardinality
+
+# Health and readiness
+curl http://localhost:8181/healthz   # 200 once serving
+curl http://localhost:8181/readyz    # 200 once this node is Raft leader
+
+# Metrics (per-group cardinality, Raft state, request counters)
+curl http://localhost:8181/metrics | grep cardinality_tracker_group_cardinality
 ```
 
 ### Teardown
@@ -165,7 +175,31 @@ If you have the Prometheus Operator installed:
 kubectl apply -f deploy/kubernetes/servicemonitor.yaml
 ```
 
-This creates a `ServiceMonitor` scraping `/metrics` on port `8080` every 15s.
+This creates a `ServiceMonitor` scraping `/metrics` on the `metrics`
+port (8081) every 15s. It selects the headless service only
+(`monitoring: enabled`), so the LoadBalancer never exposes metrics.
+
+Exported metrics:
+
+| Metric | Meaning |
+|---|---|
+| `cardinality_tracker_group_cardinality{group}` | Estimated unique ids per group, capped by `-metrics-max-groups` |
+| `cardinality_tracker_groups_dropped` | Groups omitted from the export because of that cap |
+| `cardinality_tracker_engine_groups` | Groups held by the engine |
+| `cardinality_tracker_batch_size` | Ids per `BatchAdd` request (one observation per call) |
+| `cardinality_tracker_requests_total{method,status}` | Requests handled |
+| `cardinality_tracker_request_duration_seconds{method}` | Request latency |
+| `cardinality_tracker_grpc_requests_total{method,code}` | Every gRPC call with its real status code (interceptor) |
+| `cardinality_tracker_grpc_request_duration_seconds{method,code}` | Same, as a latency histogram |
+| `cardinality_tracker_store_save_duration_seconds`, `..._store_save_errors_total` | BadgerDB sketch write latency and failures |
+| `cardinality_tracker_forwarded_requests_total{peer,method}` | Requests forwarded to a peer |
+| `cardinality_tracker_forwarded_errors_total{peer,method}` | Forwarded requests that failed |
+| `cardinality_tracker_raft_proposals_total{status}` | Raft proposals |
+| `cardinality_tracker_raft_term`, `..._raft_is_leader`, `..._raft_applied_index` | Raft state |
+
+Health endpoints: `/healthz` (process alive, always 200 once serving)
+and `/readyz` (200 only while this node is the Raft leader). The
+StatefulSet uses them for its liveness and readiness probes.
 
 Without the Prometheus Operator, add a standard Prometheus scrape config:
 
@@ -182,7 +216,7 @@ scrape_configs:
         action: keep
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
-        replacement: '$1:8080'
+        replacement: '$1:8081'
 ```
 
 ### 2.9 Teardown
@@ -197,10 +231,12 @@ kubectl delete namespace cardinality
 
 ## 3. Server Flags Reference
 
-| Flag         | Default                  | Description                                 |
-|--------------|--------------------------|---------------------------------------------|
-| `-grpc-port` | `9090`                   | gRPC listen port                            |
-| `-http-port` | `8080`                   | HTTP REST gateway + `/metrics` listen port  |
-| `-data`      | `/tmp/cardinality-data`  | BadgerDB data directory (use a PVC in prod) |
-| `-node-id`   | `1`                      | Raft node ID (must be unique per node, ≥1)  |
-| `-peers`     | `""`                     | Comma-separated `host:port` of all nodes    |
+| Flag                    | Default                  | Description                                        |
+|-------------------------|--------------------------|----------------------------------------------------|
+| `-grpc-port`            | `9090`                   | gRPC listen port                                   |
+| `-http-port`            | `8080`                   | HTTP REST gateway listen port                      |
+| `-metrics-port`         | `8081`                   | `/metrics`, `/healthz`, `/readyz` listen port      |
+| `-metrics-max-groups`   | `1000`                   | Max groups in `group_cardinality` (0 = unlimited)  |
+| `-data`                 | `/tmp/cardinality-data`  | BadgerDB data directory (use a PVC in prod)        |
+| `-node-id`              | `1`                      | Raft node ID (must be unique per node, ≥1)         |
+| `-peers`                | `""`                     | Comma-separated `host:port` of all nodes           |

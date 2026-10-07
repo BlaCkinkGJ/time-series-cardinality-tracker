@@ -96,40 +96,50 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		return nil, status.Error(codes.InvalidArgument, "id required")
 	}
 
+	if err := s.addID(ctx, "Add", req.Group, req.Id); err != nil {
+		statusStr = "error"
+		return nil, err
+	}
+	return &pb.AddResponse{Ok: true}, nil
+}
+
+// addID routes and applies a single id, and is the shared body of Add and
+// BatchAdd: a batch must not be counted as len(ids) individual Add
+// requests. method is the metric label of the originating request
+// ("Add" or "BatchAdd"), so per-id work stays attributed to it.
+func (s *Server) addID(ctx context.Context, method, group, id string) error {
 	if s.router != nil && s.selfAddr != "" {
-		owner := s.router.Resolve(req.Group)
+		owner := s.router.Resolve(group)
 		if owner != "" && owner != s.selfAddr {
-			metricForwardedRequestsTotal.WithLabelValues(owner, "Add").Inc()
+			metricForwardedRequestsTotal.WithLabelValues(owner, method).Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
-				statusStr = "error"
-				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
+				metricForwardedErrorsTotal.WithLabelValues(owner, method).Inc()
+				return status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
-			resp, err := client.Add(ctx, req)
+			_, err = client.Add(ctx, &pb.AddRequest{Group: group, Id: id})
 			if err != nil {
-				statusStr = "error"
+				metricForwardedErrorsTotal.WithLabelValues(owner, method).Inc()
 			}
-			return resp, err
+			return err
 		}
 	}
 
 	if s.node != nil {
-		if err := s.node.ProposeAdd(ctx, req.Group, hashID(req.Id)); err != nil {
-			statusStr = "error"
+		if err := s.node.ProposeAdd(ctx, group, hashID(id)); err != nil {
 			metricRaftProposalsTotal.WithLabelValues("error").Inc()
-			return nil, status.Errorf(codes.Internal, "raft propose: %v", err)
+			return status.Errorf(codes.Internal, "raft propose: %v", err)
 		}
 		metricRaftProposalsTotal.WithLabelValues("success").Inc()
-	} else {
-		err := s.engine.AddAndPersist(req.Group, hashID(req.Id), func(b []byte) error {
-			return s.store.Save(req.Group, b)
-		})
-		if err != nil {
-			statusStr = "error"
-			return nil, status.Errorf(codes.Internal, "engine add: %v", err)
-		}
+		return nil
 	}
-	return &pb.AddResponse{Ok: true}, nil
+
+	if err := s.engine.AddAndPersist(group, hashID(id), func(b []byte) error {
+		return s.store.Save(group, b)
+	}); err != nil {
+		return status.Errorf(codes.Internal, "engine add: %v", err)
+	}
+	return nil
 }
 
 func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.AddResponse, error) {
@@ -145,29 +155,34 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
 
-	// BatchAdd fans out to single-id Add rather than proposing one
+	// BatchAdd fans out to single-id adds rather than proposing one
 	// BATCH_ADD command per batch: each id is independently routed so
 	// mixed-shard batches hit the correct owner without extra client
-	// logic, and per-id errors surface as they happen.
+	// logic, and per-id errors surface as they happen. The per-id work
+	// is attributed to BatchAdd, not to Add, so one batch stays one
+	// observable request (see the batch_size histogram below).
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
 			metricForwardedRequestsTotal.WithLabelValues(owner, "BatchAdd").Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "BatchAdd").Inc()
 				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
 			resp, err := client.BatchAdd(ctx, req)
 			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "BatchAdd").Inc()
 				statusStr = "error"
 			}
 			return resp, err
 		}
 	}
 
+	metricBatchSize.Observe(float64(len(req.Ids)))
 	for _, v := range req.Ids {
-		if _, err := s.Add(ctx, &pb.AddRequest{Group: req.Group, Id: v}); err != nil {
+		if err := s.addID(ctx, "BatchAdd", req.Group, v); err != nil {
 			statusStr = "error"
 			return nil, err
 		}
@@ -194,11 +209,13 @@ func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResp
 			metricForwardedRequestsTotal.WithLabelValues(owner, "Query").Inc()
 			client, err := s.getPeerClient(owner)
 			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "Query").Inc()
 				statusStr = "error"
 				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
 			}
 			resp, err := client.Query(ctx, req)
 			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "Query").Inc()
 				statusStr = "error"
 			}
 			return resp, err

@@ -9,6 +9,7 @@ services:
     ports:
       - "9091:9090"
       - "8081:8080"
+      - "8181:8081"
     volumes:
       - node1-data:/data
   node2:
@@ -20,6 +21,7 @@ services:
     ports:
       - "9092:9090"
       - "8082:8080"
+      - "8182:8081"
     volumes:
       - node2-data:/data
   node3:
@@ -31,6 +33,7 @@ services:
     ports:
       - "9093:9090"
       - "8083:8080"
+      - "8183:8081"
     volumes:
       - node3-data:/data
 

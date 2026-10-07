@@ -52,4 +52,43 @@ var (
 		},
 		[]string{"peer", "method"},
 	)
+
+	// metricForwardedErrorsTotal counts forwarded requests that failed,
+	// so attempts can be told apart from outcomes.
+	metricForwardedErrorsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cardinality_tracker_forwarded_errors_total",
+			Help: "Total number of forwarded requests that failed.",
+		},
+		[]string{"peer", "method"},
+	)
+
+	// metricBatchSize observes ids per BatchAdd call. One observation per
+	// call, however many ids it carries.
+	metricBatchSize = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "cardinality_tracker_batch_size",
+			Help:    "Number of ids per BatchAdd request.",
+			Buckets: []float64{1, 2, 5, 10, 50, 100, 500, 1000, 5000},
+		},
+	)
+
+	// Transport-level view, filled by UnaryMetricsInterceptor: every RPC
+	// with its real status code, including ones that never reach a handler.
+	metricGRPCRequestsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "cardinality_tracker_grpc_requests_total",
+			Help: "Total number of gRPC calls by method and status code.",
+		},
+		[]string{"method", "code"},
+	)
+
+	metricGRPCDurationSeconds = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "cardinality_tracker_grpc_request_duration_seconds",
+			Help:    "Latency of gRPC calls by method and status code.",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "code"},
+	)
 )

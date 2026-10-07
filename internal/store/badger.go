@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"time"
 
 	badger "github.com/dgraph-io/badger/v4"
 )
@@ -56,9 +57,16 @@ func key(group string) []byte {
 
 // Save writes b as the serialised sketch for group.
 func (s *BadgerStore) Save(group string, b []byte) error {
-	return s.db.Update(func(txn *badger.Txn) error {
+	start := time.Now()
+	err := s.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(key(group), b)
 	})
+
+	metricSaveDurationSeconds.Observe(time.Since(start).Seconds())
+	if err != nil {
+		metricSaveErrorsTotal.Inc()
+	}
+	return err
 }
 
 // Load reads the serialised sketch for group.
