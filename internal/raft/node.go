@@ -206,6 +206,19 @@ func (n *Node) ProposeAdd(ctx context.Context, group string, id uint64) error {
 	}
 }
 
+// Status reports the current Raft term, whether this node is the leader,
+// and the last log index applied to the FSM. Safe to call after Stop:
+// etcd raft returns a zero Status once the event loop has exited.
+func (n *Node) Status() (term uint64, isLeader bool, appliedIndex uint64) {
+	st := n.node.Status()
+
+	n.mu.Lock()
+	appliedIndex = n.appliedIdx
+	n.mu.Unlock()
+
+	return st.Term, st.Lead != 0 && st.Lead == n.id, appliedIndex
+}
+
 // Stop shuts down the Raft node gracefully.
 func (n *Node) Stop() {
 	close(n.stopC)

@@ -138,9 +138,13 @@ docker compose up -d
 ```
 
 Ports:
-- Node 1: HTTP `8081`, gRPC `9091`
-- Node 2: HTTP `8082`, gRPC `9092`
-- Node 3: HTTP `8083`, gRPC `9093`
+- Node 1: HTTP `8081`, gRPC `9091`, metrics/health `8181`
+- Node 2: HTTP `8082`, gRPC `9092`, metrics/health `8182`
+- Node 3: HTTP `8083`, gRPC `9093`, metrics/health `8183`
+
+`/metrics`, `/healthz` and `/readyz` are served on the metrics port only
+(`-metrics-port`, default 8081); the public HTTP gateway never exposes
+`/metrics`.
 
 ## API Examples
 

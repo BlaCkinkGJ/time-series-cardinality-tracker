@@ -18,6 +18,9 @@ metadata:
   namespace: cardinality
   labels:
     app: cardinality
+    # Scraped by servicemonitor.yaml; the LoadBalancer service deliberately
+    # does not carry this label, so /metrics is never exposed publicly.
+    monitoring: enabled
 spec:
   clusterIP: None  # headless — gives stable DNS per pod: cardinality-{0,1,2}.cardinality.cardinality.svc.cluster.local
   selector:
@@ -30,4 +33,8 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
+      protocol: TCP
+    - name: metrics
+      port: 8081
+      targetPort: 8081
       protocol: TCP

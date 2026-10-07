@@ -45,6 +45,7 @@ spec:
               exec /server
               -grpc-port=9090
               -http-port=8080
+              -metrics-port=8081
               -data=/data
               -node-id=$((${HOSTNAME##*-}+1))
               -peers=cardinality-0.cardinality.cardinality.svc.cluster.local:9090,cardinality-1.cardinality.cardinality.svc.cluster.local:9090,cardinality-2.cardinality.cardinality.svc.cluster.local:9090
@@ -54,6 +55,9 @@ spec:
               protocol: TCP
             - name: http
               containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: 8081
               protocol: TCP
           volumeMounts:
             - name: data
@@ -65,16 +69,19 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+          # Liveness is process-level (/healthz, always 200 once serving);
+          # readiness reflects whether this node can serve correct reads
+          # (/readyz, 503 until the Raft group has a leader).
           livenessProbe:
             httpGet:
-              path: /metrics
-              port: 8080
+              path: /healthz
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
-              path: /metrics
-              port: 8080
+              path: /readyz
+              port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
   volumeClaimTemplates:

@@ -57,9 +57,17 @@ docker compose build
 docker compose up -d
 ```
 Ports:
-- Node 1 HTTP: `8081` (gRPC: `9091`)
-- Node 2 HTTP: `8082` (gRPC: `9092`)
-- Node 3 HTTP: `8083` (gRPC: `9093`)
+- Node 1 HTTP: `8081` (gRPC: `9091`, metrics/health: `8181`)
+- Node 2 HTTP: `8082` (gRPC: `9092`, metrics/health: `8182`)
+- Node 3 HTTP: `8083` (gRPC: `9093`, metrics/health: `8183`)
+
+`/metrics` (per-group cardinality, Raft state, request counters),
+`/healthz` and `/readyz` are served on the metrics port only, never on
+the public HTTP surface:
+```bash
+curl http://localhost:8181/readyz
+curl http://localhost:8181/metrics | grep cardinality_tracker_group_cardinality
+```
 
 ### API Usage
 For the complete API request/response definitions and gRPC payloads, refer to [docs/api-spec.md](docs/api-spec.md).

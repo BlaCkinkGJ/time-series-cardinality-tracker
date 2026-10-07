@@ -73,6 +73,20 @@ func (e *Engine) Cardinality(group string) (uint64, error) {
 	return sk.Cardinality(), nil
 }
 
+// CardinalityAll returns the current estimate for every group, taken
+// under a single read lock. It is the read path for the metrics
+// collector, which needs all groups at once.
+func (e *Engine) CardinalityAll() map[string]uint64 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	out := make(map[string]uint64, len(e.groups))
+	for group, sk := range e.groups {
+		out[group] = sk.Cardinality()
+	}
+	return out
+}
+
 // AddAndPersist inserts id into group and, still holding the write lock,
 // passes the freshly serialised sketch to save. Insert and persist are
 // one atomic step: a concurrent add cannot have its newer snapshot

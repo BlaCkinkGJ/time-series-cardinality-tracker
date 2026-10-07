@@ -23,9 +23,12 @@ metadata:
     app: cardinality
 spec:
   selector:
+    # Only the headless service carries `monitoring: enabled`, so the
+    # publicly exposed LoadBalancer service is never scraped.
     matchLabels:
       app: cardinality
+      monitoring: enabled
   endpoints:
-    - port: http
+    - port: metrics
       path: /metrics
       interval: 15s

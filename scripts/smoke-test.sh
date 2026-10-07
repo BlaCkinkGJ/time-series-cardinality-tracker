@@ -3,7 +3,9 @@ set -euo pipefail
 
 echo "==> Starting 3-node cardinality tracker cluster..."
 cd "$(dirname "$0")/../deploy/docker"
-docker compose up -d
+# --build: up alone reuses an existing image, which would smoke-test stale
+# source. Layer cache keeps the rebuild cheap.
+docker compose up -d --build
 
 # Cleanup on exit (in case of failure)
 trap 'echo "==> Cleaning up cluster..."; docker compose down -v' EXIT
@@ -49,6 +51,64 @@ if [ "$FINAL_CARD" -lt 95 ] || [ "$FINAL_CARD" -gt 105 ]; then
 fi
 
 echo "==> Smoke test PASSED successfully!"
+
+# Observability endpoints: /metrics, /healthz and /readyz live on the
+# dedicated metrics port (host 818x -> container 8081), never on the
+# public gateway port (808x).
+echo "==> Verifying observability endpoints..."
+if ! curl -sf http://localhost:8181/healthz > /dev/null; then
+  echo "Error: metrics port 8181 is unreachable"
+  docker compose ps
+  docker compose logs node1
+  exit 1
+fi
+
+for port in 8181 8182 8183; do
+  HEALTH=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/healthz")
+  READY=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/readyz")
+  if [ "$HEALTH" != "200" ] || [ "$READY" != "200" ]; then
+    echo "Error: node on $port reported /healthz=$HEALTH /readyz=$READY, want 200/200"
+    docker compose logs
+    exit 1
+  fi
+done
+echo "All nodes report /healthz and /readyz 200"
+
+# Only the shard owner holds the group, so sum the per-group gauge across
+# every node instead of assuming a node. `|| true` keeps a curl failure
+# from killing the script silently under set -e; an empty value then
+# fails the range check below.
+GROUP_CARD=0
+for port in 8181 8182 8183; do
+  VALUE=$(curl -s "http://localhost:$port/metrics" |
+    awk -F' ' '/^cardinality_tracker_group_cardinality\{group="prod"\}/ { print $2 }' || true)
+  if [ -n "$VALUE" ]; then
+    GROUP_CARD=$(awk -v a="$GROUP_CARD" -v b="$VALUE" 'BEGIN { print a + b }')
+  fi
+done
+echo "Summed group_cardinality{group=\"prod\"} across nodes: $GROUP_CARD"
+
+if ! awk -v v="$GROUP_CARD" 'BEGIN { exit !(v >= 95 && v <= 105) }'; then
+  echo "Error: exported cardinality $GROUP_CARD is out of range [95, 105]"
+  docker compose logs
+  exit 1
+fi
+
+LEADER=$(curl -s http://localhost:8181/metrics |
+  awk '/^cardinality_tracker_raft_is_leader/ { print $2 }' || true)
+if [ "$LEADER" != "1" ]; then
+  echo "Error: raft_is_leader on node 1 is '$LEADER', want 1"
+  docker compose logs
+  exit 1
+fi
+echo "Raft leadership reported: $LEADER"
+
+GATEWAY_METRICS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8081/metrics)
+if [ "$GATEWAY_METRICS" = "200" ]; then
+  echo "Error: /metrics is still served on the public gateway port 8081"
+  exit 1
+fi
+echo "==> Observability endpoints PASSED (public gateway returns $GATEWAY_METRICS for /metrics)"
 
 # Restart every node: the Raft log is in-memory, so this only works if the
 # startup path restores sketches from Badger (store.LoadAll -> Engine.Restore).
