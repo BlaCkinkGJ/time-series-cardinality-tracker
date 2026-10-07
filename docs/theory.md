@@ -50,6 +50,8 @@ with the number of distinct ids; HLL is bounded at 16 KB but only estimates.
 
 HLL sketch bytes written by the pre-migration **raft** path stay valid: ids are hashed in their decimal form (`murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))`), which is what that path did. The old standalone path hashed the raw string id instead, so its persisted sketches are not byte-compatible — like the snapshot format, it is covered by the no-compat-shim decision (no production data).
 
+A client id therefore goes through **two** hash steps, and both are part of the on-disk format: the API layer maps the string to a `uint64` (`murmur3.Sum64([]byte(id))`, the value carried in the Raft payload), and HLL hashes the decimal form of that `uint64` to pick a register. See [api-spec.md](api-spec.md) §1.5 for the client-facing consequences (one-way, lossy, format-bound).
+
 ---
 
 ## 2. Consistent Hashing: Even Distribution
