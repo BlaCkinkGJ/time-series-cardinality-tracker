@@ -9,6 +9,9 @@ build:
 test:
 	go test ./... -count=1
 
+# Generator versions gen/ was produced with: protoc-gen-go v1.36.12,
+# protoc-gen-go-grpc v1.4.0. Regenerating with a different version rewrites
+# the whole tree (style and unsafe usage), so match them or expect churn.
 proto:
 	protoc --go_out=gen --go_opt=paths=source_relative \
 	  --go-grpc_out=gen --go-grpc_opt=paths=source_relative \

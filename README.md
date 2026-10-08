@@ -75,13 +75,13 @@ For the complete API request/response definitions and gRPC payloads, refer to [d
 #### Add ID
 ```bash
 curl -X POST http://localhost:8081/v1/group/prod-metrics/add \
-  -d '{"id": "user-123"}'
+  -d '{"id": 12345}'
 ```
 
 #### Batch Add IDs
 ```bash
 curl -X POST http://localhost:8081/v1/group/prod-metrics/batch \
-  -d '{"ids": ["user-456", "user-789"]}'
+  -d '{"ids": [12345, 67890]}'
 ```
 
 #### Query Cardinality
