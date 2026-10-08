@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math/bits"
-	"strconv"
 	"testing"
 
 	"github.com/spaolacci/murmur3"
@@ -164,17 +163,21 @@ func TestSketch_Clone_Deep(t *testing.T) {
 	}
 }
 
-// TestAddHashCompat is the issue #13 decision-2 regression guard: Add
-// must hash the decimal form of the id, byte-for-byte compatible with
-// state persisted by the pre-migration hllAdder path. Changing the hash
-// input silently re-hashes existing Badger/raft-snapshot data.
-func TestAddHashCompat(t *testing.T) {
+// TestAddHashDerivation pins how an id becomes a register: the 8
+// little-endian bytes of the id, hashed once. The sketch bytes are the
+// persisted format, so changing the input (as the uint64 API did, from the
+// decimal form of the id) re-hashes every stored group — a migration, not
+// a refactor.
+func TestAddHashDerivation(t *testing.T) {
 	const id = uint64(123)
 
 	sk := Algorithm{}.New().(*sketch)
 	sk.Add(id)
 
-	h := murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], id)
+
+	h := murmur3.Sum64(buf[:])
 	idx := h >> (64 - precision)
 	w := h<<precision | (1<<precision - 1)
 	rho := uint8(bits.LeadingZeros64(w)) + 1
@@ -184,6 +187,6 @@ func TestAddHashCompat(t *testing.T) {
 	want[2+idx] = rho
 
 	if !bytes.Equal(sk.Bytes(), want) {
-		t.Fatalf("register state diverged from legacy decimal-string hashing at idx %d", idx)
+		t.Fatalf("register state diverged from little-endian id hashing at idx %d", idx)
 	}
 }

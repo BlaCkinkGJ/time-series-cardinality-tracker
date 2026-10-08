@@ -151,13 +151,13 @@ Ports:
 ### Add ID
 ```bash
 curl -X POST http://localhost:8081/v1/group/prod-metrics/add \
-  -d '{"id": "user-123"}'
+  -d '{"id": 12345}'
 ```
 
 ### Batch Add IDs
 ```bash
 curl -X POST http://localhost:8081/v1/group/prod-metrics/batch \
-  -d '{"ids": ["user-456", "user-789"]}'
+  -d '{"ids": [12345, 67890]}'
 ```
 
 ### Query Cardinality
@@ -188,7 +188,8 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 ## Key Design Decisions
 
 - **One algorithm per `Engine`** (`NewEngine(alg)`). There is no `Register`/`Get` name registry, so per-group algorithm selection does not exist.
-- **HLL++ p=14** gives 16384 registers (~16 KB per sketch) at ~0.81% standard error. `Add` hashes the **decimal** form of the id with murmur3, matching the pre-migration raft path so raft-written sketches keep their counts.
+- **HLL++ p=14** gives 16384 registers (~16 KB per sketch) at ~0.81% standard error. `Add` hashes the id's **8 little-endian bytes** once (murmur3), so the sketch bytes depend on that single rule; earlier revisions hashed the decimal form of the id.
+- **Ids are `uint64` end to end** (`proto/cardinality/v1`): no server-side string hashing, and the algorithm decides what to do with the value — `hll` hashes it for uniformity, `bitmap` stores it verbatim and is therefore exact over the caller's id space.
 - **`bitmap` is Roaring64**, i.e. compressed — exact counts, not a dense `max_id/8` bitset.
 - **Badger stores opaque sketch bytes** at `sketch/<group>`; the store knows nothing about HLL or roaring.
 - **Raft for consistency, standalone for single-node**; both paths persist through the engine, never around it.
@@ -201,7 +202,6 @@ Verified against the current tree — do not assume otherwise:
 
 - **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s. — **#22**
 - **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone. — **#11**
-- **Proto `id`/`ids` are `string`**; hashing to `uint64` happens in `internal/server` (`hashID`). — **#21**
 
 ## References
 

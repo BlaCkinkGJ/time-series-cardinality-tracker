@@ -158,7 +158,7 @@ func BenchmarkDistributed_Add_Forward(b *testing.B) {
 			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
 				Group: group,
-				Id:    fmt.Sprintf("val-%d", val),
+				Id:    val,
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)
@@ -275,7 +275,7 @@ func BenchmarkDistributed_Add_Forward_Latency5ms(b *testing.B) {
 			group := fmt.Sprintf("group-%d", val)
 			_, err := clients[clientIdx].Add(ctx, &pb.AddRequest{
 				Group: group,
-				Id:    fmt.Sprintf("val-%d", val),
+				Id:    val,
 			})
 			if err != nil {
 				b.Errorf("Add failed: %v", err)

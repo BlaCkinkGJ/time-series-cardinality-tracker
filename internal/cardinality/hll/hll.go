@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"math"
 	"math/bits"
-	"strconv"
 
 	"github.com/spaolacci/murmur3"
 	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/cardinality"
@@ -66,19 +65,25 @@ func (Algorithm) Parse(b []byte) (cardinality.Sketch, error) {
 // sketch is a cardinality.Sketch backed by an HLL register array.
 type sketch struct {
 	regs [numRegs]uint8
+
+	// idBuf is Add's reusable id buffer: murmur3 takes []byte and a per-call
+	// local escapes to the heap. Serial reuse is safe (the Engine serialises a
+	// group's sketch) and it is not part of the format (Bytes/Parse ignore it).
+	idBuf [8]byte
 }
 
 // AlgoName returns the algo key.
 func (s *sketch) AlgoName() string { return algoName }
 
-// Add inserts id. The id is hashed in its decimal form, matching the
-// pre-migration raft path (murmur3.Sum64([]byte(strconv.FormatUint(id,10)))),
-// so sketches persisted by that path keep their counts. The old
-// standalone path hashed the raw string id instead, so it is NOT
-// byte-compatible; like the snapshot format, it is covered by the
-// no-compat-shim decision (no production data).
+// Add inserts id. The id is hashed as its 8 little-endian bytes: one hash
+// over a stack buffer, no string conversion and no allocation. Ids are
+// opaque 64-bit values from the caller, so the sketch bytes depend only on
+// this rule; changing it re-hashes every persisted group (the old rule
+// hashed the decimal form of the id, and predates the uint64 API).
 func (s *sketch) Add(id uint64) {
-	hash := murmur3.Sum64([]byte(strconv.FormatUint(id, 10)))
+	binary.LittleEndian.PutUint64(s.idBuf[:], id)
+
+	hash := murmur3.Sum64(s.idBuf[:])
 	idx := hash >> (64 - precision)
 	w := hash<<precision | (1<<precision - 1)
 	rho := uint8(bits.LeadingZeros64(w)) + 1

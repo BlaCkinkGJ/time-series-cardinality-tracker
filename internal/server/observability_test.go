@@ -16,7 +16,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -190,9 +189,9 @@ func TestBatchAddIsOneRequest(t *testing.T) {
 	eng := cardinality.NewEngine(hll.Algorithm{})
 	srv := New(eng, st, nil, nil, "") // nil raft → standalone
 
-	ids := make([]string, 0, 5)
+	ids := make([]uint64, 0, 5)
 	for i := 0; i < 5; i++ {
-		ids = append(ids, fmt.Sprintf("id-%d", i))
+		ids = append(ids, uint64(i))
 	}
 
 	collectors := []prometheus.Collector{metricRequestsTotal, metricBatchSize}

@@ -16,7 +16,6 @@ package server_test
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"testing"
@@ -79,7 +78,7 @@ func TestAddAndQuery(t *testing.T) {
 	for i := 0; i < 1000; i++ {
 		_, err := client.Add(ctx, &pb.AddRequest{
 			Group: "my-group",
-			Id:    fmt.Sprintf("user-%d", i),
+			Id:    uint64(i),
 		})
 		if err != nil {
 			t.Fatalf("Add %d: %v", i, err)
@@ -100,14 +99,9 @@ func TestAdd_ValidationErrors(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	_, err := client.Add(ctx, &pb.AddRequest{Group: "", Id: "x"})
+	_, err := client.Add(ctx, &pb.AddRequest{Group: "", Id: 1})
 	if err == nil {
 		t.Fatal("expected error for empty group")
-	}
-
-	_, err = client.Add(ctx, &pb.AddRequest{Group: "g", Id: ""})
-	if err == nil {
-		t.Fatal("expected error for empty id")
 	}
 }
 
@@ -116,9 +110,9 @@ func TestBatchAdd(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	ids := make([]string, 500)
+	ids := make([]uint64, 500)
 	for i := range ids {
-		ids[i] = fmt.Sprintf("batch-%d", i)
+		ids[i] = uint64(i)
 	}
 	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: "batch-group", Ids: ids})
 	if err != nil {

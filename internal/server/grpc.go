@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/spaolacci/murmur3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -30,15 +29,6 @@ import (
 	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/router"
 	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
-
-// hashID maps a string id to a uint64 for the opaque WAL payload.
-// The mapping is lossy: a collision merges two ids and under-counts by
-// one, far inside HLL's own estimation error. It is also the hash the
-// pre-migration sketches were built with, so changing it drops the
-// decimal-form compatibility with them. If a lossless mapping is ever
-// needed, switch the payload to length-prefixed bytes so the original
-// id is recoverable without recomputing the sketch.
-func hashID(s string) uint64 { return murmur3.Sum64([]byte(s)) }
 
 // RaftNode is the minimal interface the server needs from the Raft layer.
 // Implemented by *raft.Node in T7; nil means standalone mode.
@@ -91,10 +81,6 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 		statusStr = "error"
 		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
-	if req.Id == "" {
-		statusStr = "error"
-		return nil, status.Error(codes.InvalidArgument, "id required")
-	}
 
 	if err := s.addID(ctx, "Add", req.Group, req.Id); err != nil {
 		statusStr = "error"
@@ -107,7 +93,11 @@ func (s *Server) Add(ctx context.Context, req *pb.AddRequest) (*pb.AddResponse, 
 // BatchAdd: a batch must not be counted as len(ids) individual Add
 // requests. method is the metric label of the originating request
 // ("Add" or "BatchAdd"), so per-id work stays attributed to it.
-func (s *Server) addID(ctx context.Context, method, group, id string) error {
+//
+// The id arrives as a uint64 and is passed through untouched: hashing for
+// uniform distribution is the algorithm's job (hll hashes it, bitmap keeps
+// it verbatim, so bitmap counts are exact over the caller's id space).
+func (s *Server) addID(ctx context.Context, method, group string, id uint64) error {
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(group)
 		if owner != "" && owner != s.selfAddr {
@@ -126,7 +116,7 @@ func (s *Server) addID(ctx context.Context, method, group, id string) error {
 	}
 
 	if s.node != nil {
-		if err := s.node.ProposeAdd(ctx, group, hashID(id)); err != nil {
+		if err := s.node.ProposeAdd(ctx, group, id); err != nil {
 			metricRaftProposalsTotal.WithLabelValues("error").Inc()
 			return status.Errorf(codes.Internal, "raft propose: %v", err)
 		}
@@ -134,7 +124,7 @@ func (s *Server) addID(ctx context.Context, method, group, id string) error {
 		return nil
 	}
 
-	if err := s.engine.AddAndPersist(group, hashID(id), func(b []byte) error {
+	if err := s.engine.AddAndPersist(group, id, func(b []byte) error {
 		return s.store.Save(group, b)
 	}); err != nil {
 		return status.Errorf(codes.Internal, "engine add: %v", err)

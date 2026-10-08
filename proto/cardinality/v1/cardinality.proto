@@ -32,12 +32,17 @@ service CardinalityService {
 
 message AddRequest {
   string group = 1;
-  string id    = 2;
+  // id is the caller's 64-bit identifier. The server stores it as given:
+  // the algorithm hashes it for uniform distribution (hll) or keeps it
+  // verbatim (bitmap, which is therefore exact over your id space). Keep
+  // your logical id -> uint64 mapping stable across every writer of a
+  // group; the server cannot recover it.
+  uint64 id    = 2;
 }
 
 message BatchAddRequest {
   string          group = 1;
-  repeated string ids   = 2;
+  repeated uint64 ids   = 2;
 }
 
 message AddResponse {
