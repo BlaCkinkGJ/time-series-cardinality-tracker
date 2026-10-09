@@ -22,7 +22,7 @@ HTTP / gRPC → Consistent Hash (Shard Routing) → Raft Group (Leader/Followers
 ```
 
 - **Shard Routing**: Each `group` maps to a shard. The shard's Raft group is replicated across 3+ nodes.
-- **Write path (Raft)**: `Node.ProposeAdd` marshals a `pb.Command{type, group, payload}` into the Raft log → apply loop → `handler.Registry.Dispatch` → `cardinality.Engine` → `BadgerStore.Save`. Every replica applies the same entry.
+- **Write path (Raft)**: `Node.ProposeAdd`/`ProposeBatch`/`ProposeMerge` marshal a `pb.Command{type, group, payload}` into the Raft log → apply loop → `handler.Registry.Dispatch` → `cardinality.Engine` → `BadgerStore.Save`. Every replica applies the same entry; a batch or a merge is one entry (one apply, one persist).
 - **Standalone path**: with `-peers` empty there is no Raft node (`Server.node == nil`) and the gRPC handler calls `Engine.AddAndPersist` directly.
 - **Durability**: `Engine.AddAndPersist` / `Engine.Persist` hold the engine write lock across serialise **and** save, so no caller ever handles raw sketch bytes.
 - **Startup restore**: the Raft log is `etcdraft.MemoryStorage`, so state comes back from Badger — `cmd/server` runs `store.LoadAll(engine.Restore)` before serving. Replaying an id is idempotent, so starting from an empty log is safe.
@@ -120,7 +120,7 @@ The WAL is generic: `Command.type` is a string and `payload` is opaque bytes, so
 
 1. `internal/raft/handler/<name>.go` — `const TypeX = "X"`, `func applyX(cmd *pb.Command, apply Adder) error`, and `func RegisterX(r *Registry) { r.Register(TypeX, applyX) }`.
 2. Call `RegisterX(r)` inside `DefaultRegistry()` (`internal/raft/handler/handler.go`).
-3. Add a proposer that marshals `pb.Command{Type: TypeX, ...}` (see `Node.ProposeAdd`).
+3. Add a proposer that marshals `pb.Command{Type: TypeX, ...}` (see `Node.ProposeBatch`).
 
 The payload schema is agreed per type and decoded only by its handler; a malformed payload returns `ErrBadPayload`.
 
@@ -200,7 +200,6 @@ curl http://localhost:8082/v1/group/prod-metrics/cardinality
 
 Verified against the current tree — do not assume otherwise:
 
-- **`BATCH_ADD` and `MERGE_SKETCH` are never proposed.** Both handlers are registered and unit-tested, but `ProposeAdd` only emits `ADD` and `Server.BatchAdd` fans out to single `ADD`s. — **#22**
 - **`bitmap` is unreachable at runtime** — `cmd/server` wires HLL only; the bitmap backend is exercised by tests alone. — **#11**
 
 ## References

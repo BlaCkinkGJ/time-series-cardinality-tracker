@@ -86,7 +86,11 @@ Cardinality estimation is algorithm-agnostic: `cardinality.NewEngine(alg)` fixes
 1. Request arrives at `node_X`.
 2. `node_X` hashes `group` and finds the owning node `node_Y`.
 3. If `node_X == node_Y`:
-   - Proposes a `Command { type: "ADD", group, payload: varint(id) }` to the local Raft group.
+   - Proposes to the local Raft group: `ADD` for one id (`payload: varint(id)`),
+     `BATCH_ADD` for a whole batch (`payload: varint(n) + varint(id)×n`), or
+     `MERGE_SKETCH` to union another cluster's serialised sketch
+     (`payload: varint(algo_len) + algo + sketch`). A batch or merge is a
+     **single entry**, so it costs one apply and one persist for N ids.
    - Raft appends log and advances state machine.
    - State machine updates in-memory HLL sketch registers.
    - Updated sketch registers are committed synchronously to BadgerDB.

@@ -164,6 +164,21 @@ func (e *Engine) Merge(group string, remote Sketch) error {
 	return nil
 }
 
+// ValidateSketch checks algoName and parses b with the engine's algorithm
+// without touching engine state. The write path uses it to reject a bad merge
+// *before* it becomes a log entry: once proposed, the entry is accepted
+// regardless of whether the apply it later triggers succeeds, so anything
+// wrong with the payload has to fail here to reach the caller.
+func (e *Engine) ValidateSketch(algoName string, b []byte) error {
+	if algoName != e.alg.Name() {
+		return fmt.Errorf("%w: engine uses %q, got %q", ErrAlgoMismatch, e.alg.Name(), algoName)
+	}
+	if _, err := e.alg.Parse(b); err != nil {
+		return fmt.Errorf("cardinality: parse %q: %w", algoName, err)
+	}
+	return nil
+}
+
 // MergeBytes parses b with the engine's algorithm and unions the
 // result into group. algoName must match the engine's algorithm;
 // a mismatch (config drift between nodes) returns ErrAlgoMismatch.

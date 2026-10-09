@@ -136,6 +136,43 @@ curl -X POST http://localhost:8081/v1/group/sensor-01/add \
 
 ---
 
+### 1.6 Merge Sketch
+Unions a serialised sketch — produced by another node or cluster — into a group. Use it to aggregate two trackers that saw different ids for the same logical group.
+
+- **Method**: `POST`
+- **Path**: `/v1/group/{group}/merge`
+- **Headers**:
+  - `Content-Type: application/json`
+- **URL Parameters**:
+  - `group` (string): Unique identifier for the group.
+- **Request Body**:
+  ```json
+  {
+    "algo": "hll",
+    "sketch": "<base64 serialised sketch>"
+  }
+  ```
+- **Response Body**:
+  ```json
+  {
+    "ok": true
+  }
+  ```
+
+`algo` is the algorithm key (`hll`, `bitmap`) that produced the bytes; the engine rejects a mismatch (`InvalidArgument`) instead of corrupting the group. `sketch` is the algorithm's own serialisation — for `hll`, the 2-byte precision prefix followed by the register array. Merging is a union, so applying the same sketch twice changes nothing, and it is safe to replay after a retry.
+
+The merge is state, not a suggestion: with Raft configured it becomes a `MERGE_SKETCH` entry, is applied on every replica and persisted, so it survives a restart.
+
+#### Example Request
+```bash
+# sketch.b64 holds the base64 output of the other tracker's sketch
+curl -X POST http://localhost:8081/v1/group/sensor-01/merge \
+  -H "Content-Type: application/json" \
+  -d "{\"algo\": \"hll\", \"sketch\": \"$(cat sketch.b64)\"}"
+```
+
+---
+
 ## 2. gRPC API
 
 The service is defined under package `cardinality.v1`.
@@ -146,6 +183,7 @@ service CardinalityService {
   rpc Add(AddRequest) returns (AddResponse);
   rpc BatchAdd(BatchAddRequest) returns (AddResponse);
   rpc Query(QueryRequest) returns (QueryResponse);
+  rpc Merge(MergeRequest) returns (MergeResponse);
 }
 ```
 
@@ -187,5 +225,21 @@ message QueryRequest {
 message QueryResponse {
   string group       = 1;
   uint64 cardinality = 2;
+}
+```
+
+#### `MergeRequest`
+```protobuf
+message MergeRequest {
+  string group  = 1;
+  string algo   = 2;  // "hll", "bitmap"
+  bytes  sketch = 3;  // serialised sketch from that algorithm
+}
+```
+
+#### `MergeResponse`
+```protobuf
+message MergeResponse {
+  bool ok = 1;
 }
 ```

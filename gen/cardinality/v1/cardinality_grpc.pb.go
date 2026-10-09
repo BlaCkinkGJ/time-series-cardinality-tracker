@@ -22,6 +22,7 @@ const (
 	CardinalityService_Add_FullMethodName      = "/cardinality.v1.CardinalityService/Add"
 	CardinalityService_BatchAdd_FullMethodName = "/cardinality.v1.CardinalityService/BatchAdd"
 	CardinalityService_Query_FullMethodName    = "/cardinality.v1.CardinalityService/Query"
+	CardinalityService_Merge_FullMethodName    = "/cardinality.v1.CardinalityService/Merge"
 )
 
 // CardinalityServiceClient is the client API for CardinalityService service.
@@ -34,6 +35,9 @@ type CardinalityServiceClient interface {
 	BatchAdd(ctx context.Context, in *BatchAddRequest, opts ...grpc.CallOption) (*AddResponse, error)
 	// Query returns the current cardinality estimate.
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
+	// Merge unions an opaque serialised sketch (produced by another node or
+	// cluster) into a group. The sketch must come from the group's algorithm.
+	Merge(ctx context.Context, in *MergeRequest, opts ...grpc.CallOption) (*MergeResponse, error)
 }
 
 type cardinalityServiceClient struct {
@@ -74,6 +78,16 @@ func (c *cardinalityServiceClient) Query(ctx context.Context, in *QueryRequest, 
 	return out, nil
 }
 
+func (c *cardinalityServiceClient) Merge(ctx context.Context, in *MergeRequest, opts ...grpc.CallOption) (*MergeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MergeResponse)
+	err := c.cc.Invoke(ctx, CardinalityService_Merge_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CardinalityServiceServer is the server API for CardinalityService service.
 // All implementations must embed UnimplementedCardinalityServiceServer
 // for forward compatibility
@@ -84,6 +98,9 @@ type CardinalityServiceServer interface {
 	BatchAdd(context.Context, *BatchAddRequest) (*AddResponse, error)
 	// Query returns the current cardinality estimate.
 	Query(context.Context, *QueryRequest) (*QueryResponse, error)
+	// Merge unions an opaque serialised sketch (produced by another node or
+	// cluster) into a group. The sketch must come from the group's algorithm.
+	Merge(context.Context, *MergeRequest) (*MergeResponse, error)
 	mustEmbedUnimplementedCardinalityServiceServer()
 }
 
@@ -99,6 +116,9 @@ func (UnimplementedCardinalityServiceServer) BatchAdd(context.Context, *BatchAdd
 }
 func (UnimplementedCardinalityServiceServer) Query(context.Context, *QueryRequest) (*QueryResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (UnimplementedCardinalityServiceServer) Merge(context.Context, *MergeRequest) (*MergeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Merge not implemented")
 }
 func (UnimplementedCardinalityServiceServer) mustEmbedUnimplementedCardinalityServiceServer() {}
 
@@ -167,6 +187,24 @@ func _CardinalityService_Query_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CardinalityService_Merge_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MergeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CardinalityServiceServer).Merge(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CardinalityService_Merge_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CardinalityServiceServer).Merge(ctx, req.(*MergeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CardinalityService_ServiceDesc is the grpc.ServiceDesc for CardinalityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -185,6 +223,10 @@ var CardinalityService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Query",
 			Handler:    _CardinalityService_Query_Handler,
+		},
+		{
+			MethodName: "Merge",
+			Handler:    _CardinalityService_Merge_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

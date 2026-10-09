@@ -28,6 +28,15 @@ service CardinalityService {
       get: "/v1/group/{group}/cardinality"
     };
   }
+
+  // Merge unions an opaque serialised sketch (produced by another node or
+  // cluster) into a group. The sketch must come from the group's algorithm.
+  rpc Merge(MergeRequest) returns (MergeResponse) {
+    option (google.api.http) = {
+      post: "/v1/group/{group}/merge"
+      body: "*"
+    };
+  }
 }
 
 message AddRequest {
@@ -57,4 +66,17 @@ message QueryRequest {
 message QueryResponse {
   string group       = 1;
   uint64 cardinality = 2;
+}
+
+message MergeRequest {
+  string group = 1;
+  // algo is the sketch's algorithm key ("hll", "bitmap"); the engine rejects
+  // a sketch whose algorithm does not match the group's.
+  string algo = 2;
+  // sketch is the serialised sketch as produced by that algorithm.
+  bytes sketch = 3;
+}
+
+message MergeResponse {
+  bool ok = 1;
 }

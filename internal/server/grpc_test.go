@@ -106,6 +106,8 @@ func TestAdd_ValidationErrors(t *testing.T) {
 }
 
 func TestBatchAdd(t *testing.T) {
+	const batchGroup = "batch-group"
+
 	client, cleanup := newTestServer(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -114,11 +116,11 @@ func TestBatchAdd(t *testing.T) {
 	for i := range ids {
 		ids[i] = uint64(i)
 	}
-	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: "batch-group", Ids: ids})
+	_, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: batchGroup, Ids: ids})
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp, err := client.Query(ctx, &pb.QueryRequest{Group: "batch-group", StaleOk: true})
+	resp, err := client.Query(ctx, &pb.QueryRequest{Group: batchGroup, StaleOk: true})
 	if err != nil {
 		t.Fatal(err)
 	}
