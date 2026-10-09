@@ -51,6 +51,24 @@ fi
 
 echo "==> Smoke test PASSED successfully!"
 
+# A batch travels as one BATCH_ADD entry (one apply, one persist) instead of
+# one ADD per id. It uses its own group: the restart check below asserts that
+# `prod` holds ~100 ids, and this adds another 100.
+echo "==> Verifying batch path (one BATCH_ADD entry per call)..."
+BATCH_IDS=$(seq 1 100 | paste -sd, -)
+curl -s -X POST http://localhost:8081/v1/group/batch-prod/batch \
+  -d "{\"ids\": [$BATCH_IDS]}" > /dev/null
+sleep 1
+
+BATCH_CARD=$(curl -s http://localhost:8081/v1/group/batch-prod/cardinality | jq -r '.cardinality')
+echo "Node 1 reported cardinality after batch: $BATCH_CARD"
+if [ "$BATCH_CARD" -lt 95 ] || [ "$BATCH_CARD" -gt 105 ]; then
+  echo "Error: cardinality after a 100-id batch is $BATCH_CARD, want [95, 105]"
+  docker compose logs
+  exit 1
+fi
+echo "==> Batch path PASSED (100 ids in one call, cardinality $BATCH_CARD)"
+
 # Observability endpoints: /metrics, /healthz and /readyz live on the
 # dedicated metrics port (host 818x -> container 8081), never on the
 # public gateway port (808x).

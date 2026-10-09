@@ -279,6 +279,113 @@ func (x *QueryResponse) GetCardinality() uint64 {
 	return 0
 }
 
+type MergeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Group string                 `protobuf:"bytes,1,opt,name=group,proto3" json:"group,omitempty"`
+	// algo is the sketch's algorithm key ("hll", "bitmap"); the engine rejects
+	// a sketch whose algorithm does not match the group's.
+	Algo string `protobuf:"bytes,2,opt,name=algo,proto3" json:"algo,omitempty"`
+	// sketch is the serialised sketch as produced by that algorithm.
+	Sketch        []byte `protobuf:"bytes,3,opt,name=sketch,proto3" json:"sketch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeRequest) Reset() {
+	*x = MergeRequest{}
+	mi := &file_cardinality_v1_cardinality_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeRequest) ProtoMessage() {}
+
+func (x *MergeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cardinality_v1_cardinality_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeRequest.ProtoReflect.Descriptor instead.
+func (*MergeRequest) Descriptor() ([]byte, []int) {
+	return file_cardinality_v1_cardinality_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *MergeRequest) GetGroup() string {
+	if x != nil {
+		return x.Group
+	}
+	return ""
+}
+
+func (x *MergeRequest) GetAlgo() string {
+	if x != nil {
+		return x.Algo
+	}
+	return ""
+}
+
+func (x *MergeRequest) GetSketch() []byte {
+	if x != nil {
+		return x.Sketch
+	}
+	return nil
+}
+
+type MergeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MergeResponse) Reset() {
+	*x = MergeResponse{}
+	mi := &file_cardinality_v1_cardinality_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MergeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MergeResponse) ProtoMessage() {}
+
+func (x *MergeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cardinality_v1_cardinality_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MergeResponse.ProtoReflect.Descriptor instead.
+func (*MergeResponse) Descriptor() ([]byte, []int) {
+	return file_cardinality_v1_cardinality_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *MergeResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
 var File_cardinality_v1_cardinality_proto protoreflect.FileDescriptor
 
 const file_cardinality_v1_cardinality_proto_rawDesc = "" +
@@ -298,11 +405,18 @@ const file_cardinality_v1_cardinality_proto_rawDesc = "" +
 	"\bstale_ok\x18\x02 \x01(\bR\astaleOk\"G\n" +
 	"\rQueryResponse\x12\x14\n" +
 	"\x05group\x18\x01 \x01(\tR\x05group\x12 \n" +
-	"\vcardinality\x18\x02 \x01(\x04R\vcardinality2\xd1\x02\n" +
+	"\vcardinality\x18\x02 \x01(\x04R\vcardinality\"P\n" +
+	"\fMergeRequest\x12\x14\n" +
+	"\x05group\x18\x01 \x01(\tR\x05group\x12\x12\n" +
+	"\x04algo\x18\x02 \x01(\tR\x04algo\x12\x16\n" +
+	"\x06sketch\x18\x03 \x01(\fR\x06sketch\"\x1f\n" +
+	"\rMergeResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok2\xbb\x03\n" +
 	"\x12CardinalityService\x12`\n" +
 	"\x03Add\x12\x1a.cardinality.v1.AddRequest\x1a\x1b.cardinality.v1.AddResponse\" \x82\xd3\xe4\x93\x02\x1a:\x01*\"\x15/v1/group/{group}/add\x12l\n" +
 	"\bBatchAdd\x12\x1f.cardinality.v1.BatchAddRequest\x1a\x1b.cardinality.v1.AddResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/group/{group}/batch\x12k\n" +
-	"\x05Query\x12\x1c.cardinality.v1.QueryRequest\x1a\x1d.cardinality.v1.QueryResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/group/{group}/cardinalityBXZVgithub.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1;cardinalityv1b\x06proto3"
+	"\x05Query\x12\x1c.cardinality.v1.QueryRequest\x1a\x1d.cardinality.v1.QueryResponse\"%\x82\xd3\xe4\x93\x02\x1f\x12\x1d/v1/group/{group}/cardinality\x12h\n" +
+	"\x05Merge\x12\x1c.cardinality.v1.MergeRequest\x1a\x1d.cardinality.v1.MergeResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/group/{group}/mergeBXZVgithub.com/BlaCkinkGJ/time-series-cardinality-tracker/gen/cardinality/v1;cardinalityv1b\x06proto3"
 
 var (
 	file_cardinality_v1_cardinality_proto_rawDescOnce sync.Once
@@ -316,23 +430,27 @@ func file_cardinality_v1_cardinality_proto_rawDescGZIP() []byte {
 	return file_cardinality_v1_cardinality_proto_rawDescData
 }
 
-var file_cardinality_v1_cardinality_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_cardinality_v1_cardinality_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_cardinality_v1_cardinality_proto_goTypes = []any{
 	(*AddRequest)(nil),      // 0: cardinality.v1.AddRequest
 	(*BatchAddRequest)(nil), // 1: cardinality.v1.BatchAddRequest
 	(*AddResponse)(nil),     // 2: cardinality.v1.AddResponse
 	(*QueryRequest)(nil),    // 3: cardinality.v1.QueryRequest
 	(*QueryResponse)(nil),   // 4: cardinality.v1.QueryResponse
+	(*MergeRequest)(nil),    // 5: cardinality.v1.MergeRequest
+	(*MergeResponse)(nil),   // 6: cardinality.v1.MergeResponse
 }
 var file_cardinality_v1_cardinality_proto_depIdxs = []int32{
 	0, // 0: cardinality.v1.CardinalityService.Add:input_type -> cardinality.v1.AddRequest
 	1, // 1: cardinality.v1.CardinalityService.BatchAdd:input_type -> cardinality.v1.BatchAddRequest
 	3, // 2: cardinality.v1.CardinalityService.Query:input_type -> cardinality.v1.QueryRequest
-	2, // 3: cardinality.v1.CardinalityService.Add:output_type -> cardinality.v1.AddResponse
-	2, // 4: cardinality.v1.CardinalityService.BatchAdd:output_type -> cardinality.v1.AddResponse
-	4, // 5: cardinality.v1.CardinalityService.Query:output_type -> cardinality.v1.QueryResponse
-	3, // [3:6] is the sub-list for method output_type
-	0, // [0:3] is the sub-list for method input_type
+	5, // 3: cardinality.v1.CardinalityService.Merge:input_type -> cardinality.v1.MergeRequest
+	2, // 4: cardinality.v1.CardinalityService.Add:output_type -> cardinality.v1.AddResponse
+	2, // 5: cardinality.v1.CardinalityService.BatchAdd:output_type -> cardinality.v1.AddResponse
+	4, // 6: cardinality.v1.CardinalityService.Query:output_type -> cardinality.v1.QueryResponse
+	6, // 7: cardinality.v1.CardinalityService.Merge:output_type -> cardinality.v1.MergeResponse
+	4, // [4:8] is the sub-list for method output_type
+	0, // [0:4] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -349,7 +467,7 @@ func file_cardinality_v1_cardinality_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cardinality_v1_cardinality_proto_rawDesc), len(file_cardinality_v1_cardinality_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -183,11 +183,45 @@ func (n *Node) maybeSnapshot() {
 
 // ProposeAdd submits an Add command to the Raft cluster and waits for acceptance.
 func (n *Node) ProposeAdd(ctx context.Context, group string, id uint64) error {
-	cmd := &pb.Command{
+	return n.propose(ctx, &pb.Command{
 		Type:    handler.TypeAdd,
 		Group:   group,
 		Payload: binary.AppendUvarint(nil, id),
+	})
+}
+
+// ProposeBatch submits one BATCH_ADD entry for the whole batch, the schema
+// handler.TypeBatchAdd decodes ([varint n][varint id…]). One entry means one
+// apply and one persist for N ids, instead of N of each.
+func (n *Node) ProposeBatch(ctx context.Context, group string, ids []uint64) error {
+	payload := binary.AppendUvarint(nil, uint64(len(ids)))
+	for _, id := range ids {
+		payload = binary.AppendUvarint(payload, id)
 	}
+	return n.propose(ctx, &pb.Command{
+		Type:    handler.TypeBatchAdd,
+		Group:   group,
+		Payload: payload,
+	})
+}
+
+// ProposeMerge submits one MERGE_SKETCH entry carrying an opaque serialised
+// sketch: [varint algo_len][algo][sketch], the schema handler.TypeMergeSketch
+// decodes. The apply side validates the algorithm against the engine.
+func (n *Node) ProposeMerge(ctx context.Context, group, algoName string, sketch []byte) error {
+	payload := binary.AppendUvarint(nil, uint64(len(algoName)))
+	payload = append(payload, algoName...)
+	payload = append(payload, sketch...)
+	return n.propose(ctx, &pb.Command{
+		Type:    handler.TypeMergeSketch,
+		Group:   group,
+		Payload: payload,
+	})
+}
+
+// propose hands cmd to the event loop and waits for Raft to accept it.
+// Acceptance is not application: the FSM applies (and persists) later.
+func (n *Node) propose(ctx context.Context, cmd *pb.Command) error {
 	data, err := proto.Marshal(cmd)
 	if err != nil {
 		return err

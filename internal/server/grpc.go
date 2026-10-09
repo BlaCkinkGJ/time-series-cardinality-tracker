@@ -34,6 +34,8 @@ import (
 // Implemented by *raft.Node in T7; nil means standalone mode.
 type RaftNode interface {
 	ProposeAdd(ctx context.Context, group string, id uint64) error
+	ProposeBatch(ctx context.Context, group string, ids []uint64) error
+	ProposeMerge(ctx context.Context, group, algoName string, sketch []byte) error
 }
 
 // Server implements pb.CardinalityServiceServer.
@@ -145,12 +147,8 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		return nil, status.Error(codes.InvalidArgument, "group required")
 	}
 
-	// BatchAdd fans out to single-id adds rather than proposing one
-	// BATCH_ADD command per batch: each id is independently routed so
-	// mixed-shard batches hit the correct owner without extra client
-	// logic, and per-id errors surface as they happen. The per-id work
-	// is attributed to BatchAdd, not to Add, so one batch stays one
-	// observable request (see the batch_size histogram below).
+	// A batch targets one group, so it has exactly one owner: forward the
+	// whole batch, never a per-id fan-out.
 	if s.router != nil && s.selfAddr != "" {
 		owner := s.router.Resolve(req.Group)
 		if owner != "" && owner != s.selfAddr {
@@ -171,6 +169,21 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 	}
 
 	metricBatchSize.Observe(float64(len(req.Ids)))
+
+	// One BATCH_ADD entry carries the whole batch: N ids cost one log entry,
+	// one apply and one persist instead of N of each.
+	if s.node != nil {
+		if err := s.node.ProposeBatch(ctx, req.Group, req.Ids); err != nil {
+			statusStr = "error"
+			metricRaftProposalsTotal.WithLabelValues("error").Inc()
+			return nil, status.Errorf(codes.Internal, "raft propose batch: %v", err)
+		}
+		metricRaftProposalsTotal.WithLabelValues("success").Inc()
+		return &pb.AddResponse{Ok: true}, nil
+	}
+
+	// Standalone: no log to batch into, so each id is applied and persisted
+	// on its own.
 	for _, v := range req.Ids {
 		if err := s.addID(ctx, "BatchAdd", req.Group, v); err != nil {
 			statusStr = "error"
@@ -178,6 +191,77 @@ func (s *Server) BatchAdd(ctx context.Context, req *pb.BatchAddRequest) (*pb.Add
 		}
 	}
 	return &pb.AddResponse{Ok: true}, nil
+}
+
+// Merge unions an opaque serialised sketch into a group, produced by another
+// node or cluster running the same algorithm. The bytes stay opaque here:
+// the engine parses them with the group's algorithm and rejects a mismatch.
+func (s *Server) Merge(ctx context.Context, req *pb.MergeRequest) (*pb.MergeResponse, error) {
+	start := time.Now()
+	statusStr := "success"
+	defer func() {
+		metricRequestsTotal.WithLabelValues("Merge", statusStr).Inc()
+		metricRequestDurationSeconds.WithLabelValues("Merge").Observe(time.Since(start).Seconds())
+	}()
+
+	if req.Group == "" {
+		statusStr = "error"
+		return nil, status.Error(codes.InvalidArgument, "group required")
+	}
+	if len(req.Sketch) == 0 {
+		statusStr = "error"
+		return nil, status.Error(codes.InvalidArgument, "sketch required")
+	}
+	// Fail here, not on apply: a proposed entry is accepted by Raft even if
+	// applying it later fails, so an unchecked payload would come back as a
+	// success and only show up in a replica's log.
+	if err := s.engine.ValidateSketch(req.Algo, req.Sketch); err != nil {
+		statusStr = "error"
+		return nil, status.Errorf(codes.InvalidArgument, "merge: %v", err)
+	}
+
+	if s.router != nil && s.selfAddr != "" {
+		owner := s.router.Resolve(req.Group)
+		if owner != "" && owner != s.selfAddr {
+			metricForwardedRequestsTotal.WithLabelValues(owner, "Merge").Inc()
+			client, err := s.getPeerClient(owner)
+			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "Merge").Inc()
+				statusStr = "error"
+				return nil, status.Errorf(codes.Internal, "dial peer %s: %v", owner, err)
+			}
+			resp, err := client.Merge(ctx, req)
+			if err != nil {
+				metricForwardedErrorsTotal.WithLabelValues(owner, "Merge").Inc()
+				statusStr = "error"
+			}
+			return resp, err
+		}
+	}
+
+	if s.node != nil {
+		if err := s.node.ProposeMerge(ctx, req.Group, req.Algo, req.Sketch); err != nil {
+			statusStr = "error"
+			metricRaftProposalsTotal.WithLabelValues("error").Inc()
+			return nil, status.Errorf(codes.Internal, "raft propose merge: %v", err)
+		}
+		metricRaftProposalsTotal.WithLabelValues("success").Inc()
+		return &pb.MergeResponse{Ok: true}, nil
+	}
+
+	if err := s.engine.MergeBytes(req.Group, req.Algo, req.Sketch); err != nil {
+		statusStr = "error"
+		return nil, status.Errorf(codes.InvalidArgument, "merge: %v", err)
+	}
+	// No log to replay, so persist the union now; the raft path persists on
+	// apply instead (see raft.Node.applyEntries).
+	if err := s.engine.Persist(req.Group, func(b []byte) error {
+		return s.store.Save(req.Group, b)
+	}); err != nil {
+		statusStr = "error"
+		return nil, status.Errorf(codes.Internal, "persist merged group: %v", err)
+	}
+	return &pb.MergeResponse{Ok: true}, nil
 }
 
 func (s *Server) Query(ctx context.Context, req *pb.QueryRequest) (*pb.QueryResponse, error) {

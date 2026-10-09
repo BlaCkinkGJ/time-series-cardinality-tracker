@@ -20,7 +20,6 @@ import (
 	"context"
 	"math"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -35,47 +34,47 @@ import (
 	"github.com/BlaCkinkGJ/time-series-cardinality-tracker/internal/store"
 )
 
-func TestIntegration_AddQuery_WithRaft(t *testing.T) {
-	dir, err := os.MkdirTemp("", "int-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+// startRaftCluster wires a single-node Raft group behind a gRPC server the
+// way cmd/server does, and returns the handles the assertions need. Every
+// resource is torn down with the test.
+func startRaftCluster(t *testing.T) (pb.CardinalityServiceClient, *cardinality.Engine, *store.BadgerStore, *raft.Node) {
+	t.Helper()
 
-	st, err := store.Open(dir)
+	st, err := store.Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer st.Close()
+	t.Cleanup(func() { _ = st.Close() })
 
 	eng := cardinality.NewEngine(hll.Algorithm{})
-
 	node := raft.NewNode(1, []raft.Peer{{ID: 1}}, eng, st)
 	go node.Run()
-	defer node.Stop()
+	t.Cleanup(node.Stop)
 
-	// Wait for leader election
-	time.Sleep(600 * time.Millisecond)
+	time.Sleep(600 * time.Millisecond) // leader election
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer lis.Close()
+	t.Cleanup(func() { _ = lis.Close() })
 
-	srv := server.New(eng, st, node, nil, "")
 	gs := grpc.NewServer()
-	pb.RegisterCardinalityServiceServer(gs, srv)
-	go gs.Serve(lis)
-	defer gs.Stop()
+	pb.RegisterCardinalityServiceServer(gs, server.New(eng, st, node, nil, ""))
+	go func() { _ = gs.Serve(lis) }()
+	t.Cleanup(gs.Stop)
 
 	conn, err := grpc.Dial(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	t.Cleanup(func() { _ = conn.Close() })
 
-	client := pb.NewCardinalityServiceClient(conn)
+	return pb.NewCardinalityServiceClient(conn), eng, st, node
+}
+
+func TestIntegration_AddQuery_WithRaft(t *testing.T) {
+	client, _, _, _ := startRaftCluster(t)
 	ctx := context.Background()
 
 	n := 50000
@@ -96,6 +95,89 @@ func TestIntegration_AddQuery_WithRaft(t *testing.T) {
 		t.Fatalf("cardinality %d vs %d — %.2f%% error", resp.Cardinality, n, errPct)
 	}
 	t.Logf("cardinality=%d (expected≈%d, error=%.2f%%)", resp.Cardinality, n, errPct)
+}
+
+// TestIntegration_BatchAndMerge_WithRaft drives the two paths #22 wired up
+// through the real API: one BATCH_ADD entry for a whole batch, and a
+// MERGE_SKETCH entry that unions another cluster's sketch into a group.
+func TestIntegration_BatchAndMerge_WithRaft(t *testing.T) {
+	const batchGroup = "batch-group"
+
+	client, eng, st, node := startRaftCluster(t)
+	ctx := context.Background()
+
+	ids := make([]uint64, 1000)
+	for i := range ids {
+		ids[i] = uint64(i)
+	}
+
+	if _, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: batchGroup, Ids: ids}); err != nil {
+		t.Fatalf("BatchAdd: %v", err)
+	}
+	waitPersisted(t, st, "batch-group", len(ids))
+
+	// One entry for the whole batch: the next proposal takes the next index.
+	first := waitAppliedAfter(t, node, 0)
+	if _, err := client.BatchAdd(ctx, &pb.BatchAddRequest{Group: "batch-group-2", Ids: ids}); err != nil {
+		t.Fatalf("BatchAdd: %v", err)
+	}
+	if second := waitAppliedAfter(t, node, first); second != first+1 {
+		t.Fatalf("1000-id batches landed at %d and %d, want consecutive indices", first, second)
+	}
+
+	if card, err := eng.Cardinality(batchGroup); err != nil || errPct(card, len(ids)) > 3 {
+		t.Fatalf("batch cardinality %d (err=%v), want ~%d", card, err, len(ids))
+	}
+
+	// Merge a sketch built for another cluster into a fresh group.
+	remote := hll.Algorithm{}.New()
+	for i := 0; i < 100; i++ {
+		remote.Add(uint64(i))
+	}
+	if _, err := client.Merge(ctx, &pb.MergeRequest{
+		Group:  "merge-group",
+		Algo:   remote.AlgoName(),
+		Sketch: remote.Bytes(),
+	}); err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	waitPersisted(t, st, "merge-group", 100)
+
+	if card, err := eng.Cardinality("merge-group"); err != nil || card != 100 {
+		t.Fatalf("merged cardinality %d (err=%v), want 100", card, err)
+	}
+
+	// A mismatched algorithm must fail at the API, not on apply: Raft accepts
+	// a proposed entry whether or not applying it later succeeds, so an
+	// unchecked payload would come back as ok:true for a merge that never
+	// happened (only the replica's log would know).
+	if _, err := client.Merge(ctx, &pb.MergeRequest{
+		Group:  "merge-group",
+		Algo:   "bitmap",
+		Sketch: remote.Bytes(),
+	}); err == nil {
+		t.Fatal("merge with a mismatched algorithm returned success")
+	}
+	if card, _ := eng.Cardinality("merge-group"); card != 100 {
+		t.Fatalf("rejected merge changed cardinality to %d, want 100", card)
+	}
+}
+
+// waitAppliedAfter polls raft.Node.Status until the FSM applied an entry past
+// index, and returns that index.
+func waitAppliedAfter(t *testing.T, node *raft.Node, after uint64) uint64 {
+	t.Helper()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if _, _, applied := node.Status(); applied > after {
+			return applied
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("applied index never moved past %d", after)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 // TestIntegration_RestartRecovery proves state survives a process restart.
